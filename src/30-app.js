@@ -29,8 +29,6 @@
     loadError: null,
     busy: false,
     q: { group: '', player: '' },
-    bg: 'day',
-    crouch: false,
     previewUuid: null,
     pctx: null,
     pcache: {},
@@ -80,13 +78,21 @@
     if (t.type === 'group') return !st.separateBedrockGroups;
     return false;
   };
+  // Only groups that actually have a format saved; groups that merely exist on
+  // the server (because a player is in them) are not listed.
   A.groupNames = (forPlatform) => {
     const platform = forPlatform || (S.target && S.target.platform) || 'java';
-    const stored = new Set(((S.data && S.data.groups && S.data.groups[platform]) || []));
-    const fromPlayers = new Set((S.data.players || []).map((p) => p.group).filter(Boolean));
-    const all = Array.from(new Set([...stored, ...fromPlayers])).sort((a, b) => a.localeCompare(b));
-    return all.map((name) => ({ name, stored: stored.has(name) }));
+    const stored = (S.data && S.data.groups && S.data.groups[platform]) || [];
+    return Array.from(new Set(stored)).sort((a, b) => a.localeCompare(b)).map((name) => ({ name, stored: true }));
   };
+  // Keeps the rail's group list in step with saves and removals made this session.
+  function trackGroup(platform, name, present) {
+    if (!S.data.groups) S.data.groups = { java: [], bedrock: [] };
+    const list = S.data.groups[platform] || (S.data.groups[platform] = []);
+    const at = list.indexOf(name);
+    if (present && at < 0) list.push(name);
+    if (!present && at >= 0) list.splice(at, 1);
+  }
   A.targetTitle = () => {
     const t = S.target; if (!t) return '';
     if (t.type === 'global') return 'Global format';
@@ -365,8 +371,6 @@
 
   A.toggleRail = () => { S.railOpen = !S.railOpen; render.top(); };
   A.closeRail = () => { S.railOpen = false; render.top(); };
-  A.setBg = (bg) => { S.bg = bg; A.view.updateStage(); };
-  A.toggleCrouch = () => { S.crouch = !S.crouch; A.view.updateStage(); };
   A.setQuery = (which, val) => { S.q[which] = val; };
   A.toggleRawOpen = () => { S.rawOpen = !S.rawOpen; render.work(); };
   A.startRawEdit = () => { S.rawEditing = true; render.work(); };
@@ -486,6 +490,7 @@
       const res = A.isAdmin() ? await S.bridge.saveFormat(S.target, raw) : await S.bridge.saveOwn(raw);
       if (res.ok) {
         S.fmt = Object.assign({}, S.fmt, { raw, exists: true });
+        if (S.target && S.target.type === 'group') trackGroup(S.target.platform === 'bedrock' ? 'bedrock' : 'java', S.target.id, true);
         A.view.toast('Format saved.', { kind: 'ok' });
         if (S.target && S.target.type === 'player') {
           const p = (S.data.players || []).find((x) => x.uuid === S.target.id);
@@ -537,14 +542,10 @@
     });
     if (v !== 'remove') return;
     await S.bridge.clearGroupFormat(groupName, S.target.platform === 'bedrock');
+    trackGroup(S.target.platform === 'bedrock' ? 'bedrock' : 'java', groupName, false);
     await loadCurrentFormat();
     render.rail();
     A.view.toast("Group format removed.", { kind: 'ok' });
-  };
-
-  A.switchRole = async (role) => {
-    S.bridge.setRole(role);
-    await A.boot(S.bridge);
   };
 
   /* --------------------------------------------------------------- boot */

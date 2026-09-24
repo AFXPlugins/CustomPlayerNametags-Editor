@@ -179,10 +179,6 @@
       body += '<div class="legend">' + legendItem('widget', 'Widget slots', 'The highlighted boxes on your nametag are yours to fill in.') + '</div>' +
         '<div class="tips">Pick a slot, then press <kbd>+</kbd> to add text. Colors and placeholders appear only if the slot allows them. <kbd>Ctrl</kbd> + <kbd>S</kbd> saves.</div>';
     }
-    const ctx = A.ctx();
-    body += '<div><h3 class="group-title">Preview rules</h3>' +
-      '<div class="kv">Line limit <code>' + (ctx.lineLimit < 0 ? 'none' : ctx.lineLimit) + '</code></div>' +
-      '<div class="kv" style="margin-top:6px">Crouching <code>' + esc(String(A.settings().crouchEffect || 'DEFAULT').toLowerCase()) + '</code></div></div>';
     if (admin && t.type === 'player' && S.fmt.exists) {
       body += '<button type="button" class="btn danger" data-act="clear-override">' + I('trash') + 'Remove personal format</button>';
     }

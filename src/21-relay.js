@@ -173,12 +173,16 @@
     async load() {
       await this._ensureFetched();
       const s = this.state;
-      // The admin who ran `/nametags editor web` isn't necessarily one of the
-      // online players in the snapshot (could've been run from console), so
-      // "self" is a synthetic identity — the admin role never actually
-      // targets 'self' anyway (see A.boot in 30-app.js).
+      // Whoever ran `/nametags editor web` (recorded by the plugin in meta.creator).
+      // Their UUID drives the head shown top-left. From the console there is no
+      // UUID, so it falls back to a plain "Console"/"Admin" identity; the admin
+      // role never actually targets 'self' either way (see A.boot in 30-app.js).
+      const creator = (this.meta && this.meta.creator) || null;
+      const me = creator && creator.name
+        ? { uuid: creator.uuid || '__admin__', name: creator.name }
+        : { uuid: '__admin__', name: 'Admin' };
       return clone({
-        session: { role: 'admin', player: { uuid: '__admin__', name: 'Admin' } },
+        session: { role: 'admin', player: me },
         settings: s.settings,
         placeholders: s.placeholders,
         players: s.players.map((p) => ({
@@ -275,11 +279,6 @@
       const preview = this.state.previews[p.uuid] || { name: p.name, values: {}, lineLimit: this.state.settings.lineMaxCharacters };
       return { name: preview.name, values: clone(preview.values), lineLimit: preview.lineLimit, look: p.look, group: p.group };
     }
-
-    /* ---- sandbox-only no-ops: a relay session has no role switch / fake data. ---- */
-    setRole() {}
-    addPlaceholder() { return false; }
-    removePlaceholder() {}
 
     /* ---------------------------------------------------------- publish ---- */
 

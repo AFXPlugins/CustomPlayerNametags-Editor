@@ -1,7 +1,5 @@
 /* ==========================================================================
  * 65-publish.js — the web-editor-specific UI on top of a RelayBridge:
- *   - the green "live session" banner (relaybar), mirroring how 60-view.js's
- *     V.renderMock() drives #mockbar for MockBridge
  *   - a pending-changes badge + "Publish" button in the top bar
  *   - the Publish modal itself: the list of changes, the generated
  *     `/nametags format ...` commands, and a Copy All button
@@ -22,21 +20,6 @@
 
   function isRelay() {
     return !!(S.bridge && S.bridge.isRelay);
-  }
-
-  /* --------------------------------------------------------------- banner */
-
-  function renderRelaybar() {
-    const el = document.getElementById('relaybar');
-    if (!el) return;
-    if (!isRelay()) { el.hidden = true; return; }
-    el.hidden = false;
-    const meta = S.bridge.meta || {};
-    const server = meta.serverName ? esc(meta.serverName) : 'your server';
-    el.innerHTML =
-      '<span class="dot-live" aria-hidden="true"></span>' +
-      '<b>Live session</b><span>Editing a snapshot of ' + server + '. Nothing changes until you Publish and run the commands.</span>' +
-      '<span class="spacer"></span>';
   }
 
   /* -------------------------------------------------------- top bar hook */
@@ -61,12 +44,6 @@
     publishBtn.innerHTML = '<span class="lbl-txt">Publish</span>';
     actions.insertBefore(badge, actions.firstChild);
     actions.insertBefore(publishBtn, actions.firstChild);
-  };
-
-  const originalRenderAll = V.renderAll;
-  V.renderAll = function () {
-    originalRenderAll();
-    renderRelaybar();
   };
 
   /* -------------------------------------------------------------- modal */

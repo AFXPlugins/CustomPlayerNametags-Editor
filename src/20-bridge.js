@@ -41,7 +41,7 @@
  *       PlaceholderAPI values for that player as the nametag would resolve them,
  *       and their effective per-line character limit (-1 = unlimited).
  *
- *   isMock: true            -> shows the "test session" banner + sandbox drawer.
+ *   isMock: true            -> the built-in example editor (no server behind it).
  * ========================================================================== */
 (function (NT) {
   'use strict';
@@ -51,76 +51,39 @@
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
   /* ------------------------------------------------------------- seed data */
+  // A blank editor: no players, no groups, just one global format pre-filled
+  // with an example so there is something to look at and play with. The lone
+  // profile below only exists to give the preview a name and placeholder values.
 
   function seed() {
-    const profile = (uuid, name, group, look, limit, values) => ({ uuid, name, group, look, limit, values });
-    const base = {
-      luckperms_primary_group_name: 'default', player_ping: '48', player_health: '20', player_level: '3',
-      player_world: 'world', vault_eco_balance_formatted: '$120', statistic_player_kills: '0', guild_tag: '',
-      luckperms_prefix: '',
-    };
-    const v = (o) => Object.assign({}, base, o);
+    const example =
+      '<gradient:#ff8a00:#e52e71><bold>{player}</bold></gradient>' +
+      '\\n<gray>Level <yellow>%player_level%<gray> | <green>%player_ping%<gray> ms' +
+      '\\n{widget id=a1b2c3d4 colors=true placeholders=true text=true limit=16}<aqua>Hello there!{/widget}';
     return {
       settings: {
         lineMaxCharacters: 24, truncateIndicator: true, widgetTruncateIndicator: true, crouchEffect: 'DEFAULT',
-        separateBedrockGlobal: true, separateBedrockGroups: true,
+        separateBedrockGlobal: false, separateBedrockGroups: false,
         bedrockPrefix: '', bedrockSuffix: '', affixGlobal: false, affixPlayer: false, affixGroup: false,
       },
       placeholders: [
-        { key: 'luckperms_prefix', value: '%luckperms_prefix%', title: 'Rank prefix' },
-        { key: 'luckperms_primary_group_name', value: '%luckperms_primary_group_name%', title: 'Rank name' },
         { key: 'player_ping', value: '%player_ping%', title: 'Ping (ms)' },
         { key: 'player_health', value: '%player_health%', title: 'Health' },
         { key: 'player_level', value: '%player_level%', title: 'XP level' },
         { key: 'player_world', value: '%player_world%', title: 'World' },
-        { key: 'vault_eco_balance_formatted', value: '%vault_eco_balance_formatted%', title: 'Balance' },
-        { key: 'statistic_player_kills', value: '%statistic_player_kills%', title: 'Kills' },
-        { key: 'guild_tag', value: '%guild_tag%', title: 'Guild tag' },
       ],
-      profiles: [
-        profile('p-1', 'Pixelpaw', 'owner', { skin: '#e9b98f', hair: '#3a2a22', shirt: '#2f6fd0', pants: '#39407a', eyes: '#3b6fd8' }, 40, v({
-          luckperms_prefix: '&c&l[Owner] &r', luckperms_primary_group_name: 'owner', player_ping: '23', player_level: '47',
-          vault_eco_balance_formatted: '$1.2M', statistic_player_kills: '1,204',
-          guild_tag: '<gradient:#ff8a00:#e52e71>Dragonkin</gradient>',
-        })),
-        profile('p-2', 'Ferrowick', 'admin', { skin: '#c68e63', hair: '#1d1d24', shirt: '#b5432e', pants: '#3a3a44', eyes: '#2a2a2a' }, null, v({
-          luckperms_prefix: '&6[Admin] ', luckperms_primary_group_name: 'admin', player_ping: '61', player_level: '32',
-          vault_eco_balance_formatted: '$88,410', statistic_player_kills: '512', guild_tag: '&e[Forge]',
-        })),
-        profile('p-3', 'Daisy_Cuts', 'moderator', { skin: '#f2cfae', hair: '#c7622d', shirt: '#3aa06a', pants: '#2e4a6e', eyes: '#2f8f5a' }, null, v({
-          luckperms_prefix: '&9[Mod] ', luckperms_primary_group_name: 'moderator', player_ping: '35', player_level: '24',
-          vault_eco_balance_formatted: '$5,230', statistic_player_kills: '87', guild_tag: '<rainbow>Petals</rainbow>',
-        })),
-        profile('p-4', 'Kestrel', 'vip', { skin: '#d9a27c', hair: '#e2c15a', shirt: '#7a48c9', pants: '#2a2f52', eyes: '#7a48c9' }, null, v({
-          luckperms_prefix: '&a[VIP] ', luckperms_primary_group_name: 'vip', player_ping: '112', player_level: '18',
-          vault_eco_balance_formatted: '$940', statistic_player_kills: '33', guild_tag: '&b[Skyward]',
-        })),
-        profile('p-5', 'Mossback', 'default', { skin: '#a97b56', hair: '#5a4632', shirt: '#4d7a3a', pants: '#4a3f33', eyes: '#3a3a3a' }, null, v({
-          player_ping: '148', player_level: '6', vault_eco_balance_formatted: '$210', player_world: 'world_nether',
-        })),
-        profile('p-6', 'Sir_Bonks_A_Lot', 'default', { skin: '#f0c9a6', hair: '#a13a3a', shirt: '#d9d9e4', pants: '#59637d', eyes: '#1f6fbd' }, null, v({
-          luckperms_prefix: '&5[Grand Archmage of Ember] ', player_ping: '9', player_level: '61',
-          vault_eco_balance_formatted: '$12,004,551', statistic_player_kills: '9,999', guild_tag: '&d[The Long Name Guild]',
-        })),
-      ],
+      profiles: [{
+        uuid: 'preview', name: 'Steve', group: 'default', limit: null,
+        look: { skin: '#c68e63', hair: '#3a2a22', shirt: '#2f9fb0', pants: '#39407a', eyes: '#3b6fd8' },
+        values: { player_ping: '48', player_health: '20', player_level: '12', player_world: 'world' },
+      }],
       formats: {
-        global: {
-          java: '%luckperms_prefix%<white>{player}\\n<gray>Ping <green>%player_ping%<gray> ms {widget id=k3m9x2ab colors=true placeholders=true text=false limit=14}%guild_tag%{/widget}\\n{widget id=b71f04de colors=false placeholders=true text=true limit=18}{/widget}',
-          bedrock: '<aqua>{player}\\n<gray>%player_ping% ms',
-        },
-        group: {
-          java: {
-            owner: '<gradient:#ff5f6d:#ffc371><bold>OWNER</bold></gradient> <white>{player}\\n{chars 20}<gray>Level <yellow>%player_level%<gray> | %statistic_player_kills% kills',
-            admin: '<red>[Admin] <white>{player}\\n{widget id=a7c3e901 colors=true placeholders=true text=true limit=16}{/widget}',
-            moderator: '&9[Mod] &f{player}\\n<gray>%player_world%',
-            vip: '&a[VIP] &f{player}\\n<gray>%vault_eco_balance_formatted%',
-          },
-          bedrock: { owner: '<gold>[Owner] {player}' },
-        },
-        player: { 'p-4': '<green>{player}\\n<rainbow>%player_ping% ping</rainbow>' },
+        global: { java: example, bedrock: example },
+        group: { java: {}, bedrock: {} },
+        player: {},
       },
-      fills: { 'p-1': { b71f04de: 'Diamonds or bust' } },
-      session: { role: 'admin', playerUuid: 'p-1' },
+      fills: {},
+      session: { role: 'admin', playerUuid: 'preview' },
     };
   }
 
@@ -146,7 +109,7 @@
         session: { role: s.session.role, player: { uuid: me.uuid, name: me.name } },
         settings: s.settings,
         placeholders: s.placeholders,
-        players: s.profiles.map((p) => ({ uuid: p.uuid, name: p.name, group: p.group, hasFormat: !!s.formats.player[p.uuid] })),
+        players: [],
         groups: {
           java: Object.keys(s.formats.group.java),
           bedrock: Object.keys(s.formats.group.bedrock),
@@ -240,16 +203,6 @@
       const lineLimit = p.limit == null ? this.state.settings.lineMaxCharacters : p.limit;
       return { name: p.name, values: clone(p.values), lineLimit, look: p.look, group: p.group };
     }
-
-    /* ---- sandbox-only helpers (not part of the contract) ---- */
-    setRole(role) { this.state.session.role = role; }
-    addPlaceholder(key, title) {
-      if (!key || this.state.placeholders.some((p) => p.key === key)) return false;
-      this.state.placeholders.push({ key, value: '%' + key + '%', title: title || null });
-      this.state.profiles.forEach((p) => { if (p.values[key] === undefined) p.values[key] = ''; });
-      return true;
-    }
-    removePlaceholder(key) { this.state.placeholders = this.state.placeholders.filter((p) => p.key !== key); }
   }
 
   // A `?session=<id>` in the URL (put there by `/nametags editor web`) means

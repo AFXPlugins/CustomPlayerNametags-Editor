@@ -229,8 +229,6 @@
 
   /* ------------------------------------------------------------------ stage */
 
-  const SCENES = [['day', 'Daytime'], ['night', 'Night'], ['nether', 'Nether'], ['end', 'The End']];
-
   function stageHtml() {
     const t = S.target;
     const admin = A.isAdmin();
@@ -242,42 +240,21 @@
     } else {
       who = '<span class="lbl">Previewing</span><span class="fixed">' + esc(S.pctx ? S.pctx.name : '') + '</span>';
     }
-    const swatches = SCENES.map((s) => '<button type="button" data-act="bg" data-bg="' + s[0] + '" aria-pressed="' + (S.bg === s[0]) + '" aria-label="' + s[1] + '" title="' + s[1] + '"></button>').join('');
-    const effect = A.settings().crouchEffect;
-    const noCrouch = effect === 'NONE';
-    return '<section class="stage" id="stage" data-bg="' + S.bg + '" aria-label="Nametag preview">' +
+    return '<section class="stage" id="stage" aria-label="Nametag preview">' +
       '<div class="stage-ctl tl">' + who + '</div>' +
-      '<div class="stage-ctl tr"><div class="swatches" role="group" aria-label="Scene">' + swatches + '</div></div>' +
-      '<div class="stage-ctl bl"><button type="button" class="btn sm ghost" id="crouch-btn" data-act="crouch" aria-pressed="' + S.crouch + '"' + (noCrouch ? ' disabled title="Crouching does not change nametags on this server"' : '') + '>' + I('crouch', 'sm') + 'Crouch</button><span class="lbl" id="crouch-note"></span></div>' +
-      '<div class="stage-ctl br" id="stage-info"></div>' +
-      '<div class="figure" id="figure" data-crouch="0"><div class="tagwrap" id="tagwrap"></div></div></section>';
+      '<div class="figure" id="figure"><div class="tagwrap" id="tagwrap"></div></div></section>';
   }
 
-  /** Patches the stage in place so the crouch and scene transitions can animate. */
+  /** Redraws the nametag on the stage in place. */
   V.updateStage = () => {
-    const stage = $('stage');
-    if (!stage) return;
-    const st = A.settings();
-    const ctx = A.ctx();
+    if (!$('stage')) return;
     const b = A.previewBuild();
-    const effect = st.crouchEffect;
-    const crouching = S.crouch && effect !== 'NONE';
-    stage.dataset.bg = S.bg;
-    stage.querySelectorAll('[data-act="bg"]').forEach((el) => el.setAttribute('aria-pressed', String(el.dataset.bg === S.bg)));
-    const cb = $('crouch-btn');
-    if (cb) cb.setAttribute('aria-pressed', String(crouching));
-    $('figure').dataset.crouch = crouching ? '1' : '0';
-    $('crouch-note').textContent = crouching ? (effect === 'HIDE' ? 'Nametag hidden' : 'Colors fade to grey') : '';
     let tag;
-    if (crouching && effect === 'HIDE') tag = '<div class="tag hidden-crouch">Hidden while crouching</div>';
-    else if (!b.lines.length) tag = '<div class="tag empty">Nothing to show</div>';
+    if (!b.lines.length) tag = '<div class="tag empty">Nothing to show</div>';
     else {
-      const grey = crouching && effect === 'DEFAULT' ? (ctx.platform === 'bedrock' ? NT.mini.SNEAK_GREY_BEDROCK : NT.mini.SNEAK_GREY) : null;
-      tag = '<div class="tag" aria-label="' + esc(b.plain.join(' / ')) + '">' + b.lines.map((r) => '<span class="ln">' + P.runsToHtml(r, grey) + '</span>').join('') + '</div>';
+      tag = '<div class="tag" aria-label="' + esc(b.plain.join(' / ')) + '">' + b.lines.map((r) => '<span class="ln">' + P.runsToHtml(r, null) + '</span>').join('') + '</div>';
     }
     $('tagwrap').innerHTML = tag;
-    const n = b.lines.length;
-    $('stage-info').textContent = n + (n === 1 ? ' line, ' : ' lines, ') + (ctx.lineLimit < 0 ? 'no character limit' : 'max ' + ctx.lineLimit + ' characters');
   };
 
   /* -------------------------------------------------------------------- rail */
@@ -300,11 +277,11 @@
   function renderGroupList(gEl, t, qg) {
     const groups = A.groupNames().filter((g) => !qg || g.name.toLowerCase().includes(qg));
     let html = groups.map((g) => '<button type="button" class="nav" data-act="go" data-type="group" data-id="' + esc(g.name) + '" aria-current="' + (!!t && t.type === 'group' && t.id === g.name) + '">' +
-      '<span class="lbl">' + esc(g.name) + '</span>' + (g.stored ? '<span class="tick" title="Has a format"></span>' : '<span class="sub">global</span>') + '</button>').join('');
+      '<span class="lbl">' + esc(g.name) + '</span><span class="tick" title="Has a format"></span></button>').join('');
     if (qg && !A.groupNames().some((g) => g.name.toLowerCase() === qg)) {
       html += '<button type="button" class="nav" data-act="go" data-type="group" data-id="' + esc(S.q.group.trim()) + '"><span class="lbl">' + I('plus', 'sm') + ' Create “' + esc(S.q.group.trim()) + '”</span></button>';
     }
-    gEl.innerHTML = html || '<p class="empty-note">No groups yet.</p>';
+    gEl.innerHTML = html || '<p class="empty-note">' + (qg ? 'No groups match.' : 'No group formats have been created yet.') + '</p>';
   }
 
   function renderPlayerList(pEl, t, qp) {
@@ -312,14 +289,30 @@
     pEl.innerHTML = players.map((p) => navPlayer(p, !!t && t.type === 'player' && t.id === p.uuid)).join('') || '<p class="empty-note">' + (qp ? 'No players match.' : 'Nobody is online.') + '</p>';
   }
 
+  // The head of whoever opened this editor: their real skin (fetched by UUID from
+  // a public head-rendering service), falling back to the blocky drawn face if
+  // there is no UUID (console / offline) or the image can't be loaded.
+  const HEAD_HOSTS = ['https://crafatar.com/avatars/{id}?size=68&overlay&default=MHF_Steve', 'https://minotar.net/helm/{id}/68.png'];
+  const REAL_UUID = /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i;
+  V.headFallback = (img) => {
+    const next = parseInt(img.dataset.n || '0', 10) + 1;
+    const id = img.dataset.id;
+    if (next < HEAD_HOSTS.length) { img.dataset.n = String(next); img.src = HEAD_HOSTS[next].replace('{id}', id); return; }
+    const host = img.parentNode;
+    if (host) host.innerHTML = NT.figure.face(null);
+  };
+  function faceHtml(me) {
+    if (!me || !REAL_UUID.test(me.uuid || '')) return NT.figure.face(S.pcache[me && me.uuid] && S.pcache[me.uuid].look);
+    const id = me.uuid.replace(/-/g, '');
+    return '<img class="head-img" alt="" width="34" height="34" data-id="' + id + '" data-n="0" src="' + HEAD_HOSTS[0].replace('{id}', id) + '" onerror="NT.app.view.headFallback(this)">';
+  }
+
   V.renderRail = () => {
     const rail = $('rail');
     if (!S.data) { rail.innerHTML = ''; return; }
     const t = S.target || {};
     const me = S.data.session.player;
-    const look = (S.data.players || []).length ? null : null;
-    const meLook = S.pcache[me.uuid] && S.pcache[me.uuid].look;
-    const who = '<div class="who"><div class="face">' + NT.figure.face(meLook) + '</div><div><div class="nm">' + esc(me.name) + '</div><div class="rl">' + (A.isAdmin() ? 'Administrator' : 'Player') + '</div></div></div>';
+    const who = '<div class="who"><div class="face">' + faceHtml(me) + '</div><div><div class="nm">' + esc(me.name) + '</div><div class="rl">' + (A.isAdmin() ? 'Administrator' : 'Player') + '</div></div></div>';
     if (!A.isAdmin()) {
       const note = A.full()
         ? '<b>Personal format.</b> An admin gave you your own nametag, so you can change all of it.'
@@ -368,32 +361,16 @@
     if (t && A.editionUnused()) pills.push('<span class="pill locked" title="The server is set to share the Java formats with Bedrock players">' + I('lock', 'sm') + 'Not in use</span>');
     if (t && !A.isAdmin() && !A.full()) pills.push('<span class="pill locked">' + I('lock', 'sm') + 'Widget slots only</span>');
     if (dirty) pills.push('<span class="pill dirty">Unsaved changes</span>');
-    const mock = S.bridge && S.bridge.isMock;
     $('topbar').innerHTML =
       '<button type="button" class="btn icon ghost menu-btn" data-act="rail-toggle" aria-label="Show formats" aria-expanded="' + S.railOpen + '">' + I('menu') + '</button>' +
-      '<div class="brand">' + brandMark() + '<span class="brand-name">Nametags</span><span class="brand-sub">' + (A.isAdmin() ? 'Nametag Format Admin' : 'Nametag Editor') + '</span></div>' +
+      '<div class="brand"><img class="brand-mark" src="assets/icon.png" alt="" width="38" height="38"><div class="brand-text"><span class="brand-name">CustomPlayerNametags</span><span class="brand-sub">Nametag Format Editor</span></div></div>' +
       '<div class="crumbs"><span class="title">' + esc(A.targetTitle()) + '</span>' + pills.join('') + '</div><div class="spacer"></div>' +
       '<div class="actions">' +
-      (mock ? '<button type="button" class="btn icon ghost" data-act="sandbox" aria-label="Open test sandbox" title="Test sandbox">' + I('flask') + '</button><span class="sep"></span>' : '') +
       '<button type="button" class="btn ghost" data-act="discard"' + (dirty ? '' : ' disabled') + '>' + I('x') + '<span class="lbl-txt">Discard changes</span></button>' +
       '<button type="button" class="btn primary" data-act="save"' + (dirty && !S.busy ? '' : ' disabled') + '>' + (dirty ? '<span class="dot"></span>' : '') + I('save') + '<span class="lbl-txt">' + (S.busy ? 'Saving…' : 'Save format') + '</span></button></div>';
     $('rail-scrim').hidden = !S.railOpen;
     $('app').dataset.rail = S.railOpen ? '1' : '0';
-    document.title = (dirty ? '• ' : '') + (A.targetTitle() || 'Nametags') + ' | Nametag editor';
-  };
-
-  function brandMark() {
-    return '<svg class="brand-mark" viewBox="0 0 32 32" shape-rendering="crispEdges" aria-hidden="true">' +
-      '<rect x="2" y="6" width="28" height="20" fill="#0f1528"/><rect x="2" y="6" width="28" height="2" fill="#f4b942"/>' +
-      '<rect x="6" y="12" width="9" height="3" fill="#ff7f7f"/><rect x="17" y="12" width="9" height="3" fill="#e9edf8"/>' +
-      '<rect x="8" y="18" width="16" height="3" fill="#55d7ea"/><rect x="12" y="26" width="8" height="2" fill="#0f1528"/><rect x="14" y="28" width="4" height="2" fill="#0f1528"/></svg>';
-  }
-
-  V.renderMock = () => {
-    const el = $('mockbar');
-    const mock = S.bridge && S.bridge.isMock;
-    el.hidden = !mock;
-    if (mock) el.innerHTML = '<b>Test session</b><span>Running on made-up players, groups and placeholders. Nothing here reaches a server.</span><button type="button" class="link" data-act="sandbox">Open sandbox</button>';
+    document.title = (dirty ? '• ' : '') + (A.targetTitle() || 'Nametag Format Editor') + ' | CustomPlayerNametags';
   };
 
   /* ------------------------------------------------------------------- work */
@@ -427,7 +404,6 @@
 
   V.renderAll = () => {
     V.renderTop();
-    V.renderMock();
     V.renderRail();
     V.renderWork();
     V.renderInspector();

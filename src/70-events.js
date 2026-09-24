@@ -91,7 +91,6 @@
       case 'start-from-current': A.startFromCurrent(); return;
       case 'clear-override': A.clearOverride(); return;
       case 'clear-group-format': A.clearGroupFormat(); return;
-      case 'sandbox': NT.sandbox && NT.sandbox.open(); return;
 
       case 'publish': A.openPublish(); return;
       case 'publish-close': A.view.closePublish(); return;
@@ -105,8 +104,6 @@
       }
       case 'tab': await A.openTab(btn.dataset.tab); return;
       case 'platform': await A.setPlatform(btn.dataset.v); return;
-      case 'bg': A.setBg(btn.dataset.bg); return;
-      case 'crouch': A.toggleCrouch(); return;
 
       case 'add-line': A.addLine(); A.view.renderWork(); return;
       case 'line-up': A.moveLineUp(parseInt(btn.dataset.line, 10)); A.view.renderWork(); return;
