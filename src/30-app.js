@@ -527,7 +527,6 @@
     A.view.toast('Personal format removed.', { kind: 'ok' });
   };
 
-<<<<<<< HEAD
   A.clearGroupFormat = async () => {
     if (!S.target || S.target.type !== 'group') return;
     const groupName = S.target.id;
@@ -543,8 +542,6 @@
     A.view.toast("Group format removed.", { kind: 'ok' });
   };
 
-=======
->>>>>>> 7313786d9b319ee1829bf3a59889735820c0574b
   A.switchRole = async (role) => {
     S.bridge.setRole(role);
     await A.boot(S.bridge);
@@ -569,21 +566,17 @@
   A.init = async () => {
     try {
       await A.boot(NT.createBridge());
-<<<<<<< HEAD
     } catch (e) {
       // Almost always a RelayBridge whose session has expired, was already
       // used up, or was mistyped — there is no format data to show at all
       // in that case, so this replaces the whole app shell with a plain
       // explanation instead of leaving a blank page behind the boot screen.
       renderFatalBootError((e && e.message) || 'Something went wrong loading this editor session.');
-=======
->>>>>>> 7313786d9b319ee1829bf3a59889735820c0574b
     } finally {
       const boot = document.getElementById('boot');
       if (boot) { boot.classList.add('done'); setTimeout(() => boot.remove(), 300); }
     }
   };
-<<<<<<< HEAD
 
   function renderFatalBootError(message) {
     const app = document.getElementById('app');
@@ -595,6 +588,4 @@
       '<p class="fatal-error-hint">Session links expire after 30 minutes and can only be opened while they\u2019re still valid. Run <code>/nametags editor web</code> again on the server to get a fresh one.</p>' +
       '</div></div>';
   }
-=======
->>>>>>> 7313786d9b319ee1829bf3a59889735820c0574b
 })((globalThis.NT = globalThis.NT || {}));

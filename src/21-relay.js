@@ -28,7 +28,7 @@
    * own Worker, change both together. `?api=` in the URL overrides this for
    * local testing against a dev Worker, without needing a rebuild.
    */
-  const DEFAULT_WORKER_URL = 'https://customplayernametags-editor-relay.YOUR_SUBDOMAIN.workers.dev';
+  const DEFAULT_WORKER_URL = 'https://customplayernametags-editor-relay.afxplugins.workers.dev';
 
   function urlParam(name) {
     try {
