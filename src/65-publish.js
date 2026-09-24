@@ -1,6 +1,6 @@
 /* ==========================================================================
  * 65-publish.js — the web-editor-specific UI on top of a RelayBridge:
- *   - a pending-changes badge + "Publish" button in the top bar
+ *   - an "Apply Format" (publish) button in the top bar
  *   - the Publish modal itself: the list of changes, the generated
  *     `/nametags format ...` commands, and a Copy All button
  *
@@ -32,18 +32,12 @@
     const actions = document.querySelector('#topbar .actions');
     if (!actions) return;
     const changes = S.bridge.getPendingChanges();
-    const badge = document.createElement('span');
-    badge.className = 'pending-badge';
-    badge.innerHTML = changes.length
-      ? 'Pending changes <span class="n">' + changes.length + '</span>'
-      : 'No pending changes';
     const publishBtn = document.createElement('button');
     publishBtn.type = 'button';
     publishBtn.className = 'btn primary';
     publishBtn.setAttribute('data-act', 'publish');
     if (!changes.length) publishBtn.disabled = true;
     publishBtn.innerHTML = I('save', 'sm') + '<span class="lbl-txt">Apply Format</span>';
-    actions.insertBefore(badge, actions.firstChild);
     actions.insertBefore(publishBtn, actions.firstChild);
   };
 

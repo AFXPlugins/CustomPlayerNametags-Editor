@@ -87,7 +87,8 @@ svg.i.lg { width: 22px; height: 22px; }
 /* flex: none — the brand is a flex item like any other, so without this it shrinks
  * under pressure from a wide crumbs (many pills) or actions (badge + button) instead
  * of staying its natural size, and its nowrap text spills into the next item. */
-.brand { display: flex; align-items: center; gap: 12px; min-width: 0; flex: none; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; flex: none; color: inherit; text-decoration: none; border-radius: var(--r-sm); }
+.brand:hover .brand-name { color: var(--gold-hi); }
 .brand-mark {
   width: 38px; height: 38px; flex: none; border-radius: 9px; image-rendering: pixelated; object-fit: cover;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, .14), 0 0 0 3px rgba(0, 0, 0, .28), 0 4px 10px -2px rgba(0, 0, 0, .55);
@@ -104,7 +105,6 @@ svg.i.lg { width: 22px; height: 22px; }
   font-size: 10.5px; line-height: 1; font-weight: 700; letter-spacing: .17em; text-transform: uppercase;
   color: var(--gold); white-space: nowrap; opacity: .92;
 }
-.menu-btn { display: none; }
 
 .crumbs { display: flex; align-items: center; gap: 8px; min-width: 0; margin-left: 10px; padding-left: 16px; border-left: 1px solid var(--line-soft); flex: 1 1 auto; overflow: hidden; }
 .crumbs .title { font-weight: 650; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -147,11 +147,6 @@ svg.i.lg { width: 22px; height: 22px; }
 
 .link { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; text-underline-offset: 3px; font-weight: 600; }
 
-.pending-badge {
-  display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: var(--r);
-  background: var(--gold-soft); border: 1px solid rgba(244, 185, 66, .35); color: var(--gold-hi); font-weight: 650; font-size: 13px;
-}
-.pending-badge .n { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--gold); color: var(--gold-ink); font-size: 11.5px; }
 
 .fatal-error { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; background: var(--bg); }
 .fatal-error-card { max-width: 480px; text-align: center; }
@@ -169,11 +164,6 @@ svg.i.lg { width: 22px; height: 22px; }
  * Rail (targets)
  * ========================================================================== */
 .rail { background: var(--rail); border-right: 1px solid var(--line-soft); overflow-y: auto; padding: 14px 10px 24px; }
-/* Only ever an overlay on narrow layouts (see the media query below). Without
- * this, opening the rail on a narrow window and then widening it left the
- * scrim as a plain block that dropped into the 3-column shell grid as a
- * stray 4th item, breaking the whole layout. */
-.rail-scrim { display: none; }
 .who {
   display: flex; align-items: center; gap: 10px; padding: 10px; margin-bottom: 14px; border-radius: var(--r);
   background: var(--slot); box-shadow: var(--bevel);
@@ -604,12 +594,14 @@ input[type="color"]::-moz-color-swatch { border: 0; border-radius: 5px; }
  * Responsive
  * ========================================================================== */
 @media (max-width: 1179px) {
-  .shell { grid-template-columns: minmax(0, 1fr) 320px; }
-  .menu-btn { display: inline-flex; }
-  .rail { position: fixed; z-index: 40; top: 0; bottom: 0; left: 0; width: 280px; transform: translateX(-100%); transition: transform .2s var(--ease); box-shadow: 30px 0 60px -20px rgba(0, 0, 0, .7); }
-  .app[data-rail="1"] .rail { transform: none; }
-  .rail-scrim:not([hidden]) { display: block; position: fixed; inset: 0; z-index: 39; background: rgba(6, 9, 20, .55); }
+  .shell { grid-template-columns: 220px minmax(0, 1fr) 320px; }
   .crumbs { margin-left: 0; }
+}
+/* Not enough width for three columns: the formats list sits above the editor as a
+ * short scrolling strip instead of a side column, so it never needs a toggle button. */
+@media (max-width: 999px) {
+  .shell { grid-template-columns: minmax(0, 1fr) 320px; grid-template-rows: auto minmax(0, 1fr); }
+  .rail { grid-column: 1 / -1; max-height: 30vh; border-right: 0; border-bottom: 1px solid var(--line-soft); }
 }
 @media (max-width: 859px) {
   .shell { grid-template-columns: minmax(0, 1fr); }

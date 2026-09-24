@@ -23,7 +23,6 @@
     pop: null,
     menu: null,
     modal: null,
-    railOpen: false,
     rawOpen: false,
     rawEditing: false,
     loading: false,
@@ -480,12 +479,20 @@
     S.lines.splice(l + 1, 0, dup);
     scheduleAutosave();
   };
-  A.deleteLine = (l) => {
+  /** Asks first; resolves true if the line was actually deleted. */
+  A.deleteLine = async (l) => {
+    const v = await A.view.confirm({
+      title: 'Delete line ' + (l + 1) + '?',
+      body: 'This removes the whole line and everything on it. You can still undo it afterwards.',
+      buttons: [{ value: 'cancel', label: 'Cancel' }, { value: 'delete', label: 'Delete line', kind: 'danger' }],
+    });
+    if (v !== 'delete') return false;
     pushHistory();
     if (S.lines.length <= 1) S.lines[0] = [];
     else S.lines.splice(l, 1);
     if (S.sel && S.sel.l === l) S.sel = null;
     scheduleAutosave();
+    return true;
   };
   /** True once line `l` differs from how it was when this format was loaded
    *  this session — including a line that didn't exist back then at all —
@@ -497,8 +504,16 @@
   };
   /** Restores line `l` to how it was when this format was loaded this
    *  session, or removes it outright if it didn't exist yet back then. */
-  A.resetLine = (l) => {
+  A.resetLine = async (l) => {
     const original = S.baseline && S.baseline[l];
+    const v = await A.view.confirm({
+      title: 'Reset line ' + (l + 1) + '?',
+      body: original === undefined
+        ? 'This line was added this session, so resetting it removes it. You can still undo it afterwards.'
+        : 'This line will go back to how it was when the format loaded, discarding your changes to it. You can still undo it afterwards.',
+      buttons: [{ value: 'cancel', label: 'Cancel' }, { value: 'reset', label: 'Reset line', kind: 'danger' }],
+    });
+    if (v !== 'reset') return false;
     pushHistory();
     if (original === undefined) {
       if (S.lines.length <= 1) S.lines[0] = [];
@@ -508,15 +523,11 @@
     }
     if (S.sel && S.sel.l === l) S.sel = null;
     scheduleAutosave();
+    return true;
   };
 
   /* ------------------------------------------------------------- UI-only */
 
-  // On a wide screen the rail is a permanent column, and this button collapses
-  // or restores it to give the format area more room. Below 1180px the rail is
-  // an overlay instead, and this is what opens/closes it (see style.css).
-  A.toggleRail = () => { S.railOpen = !S.railOpen; render.top(); };
-  A.closeRail = () => { S.railOpen = false; render.top(); };
   A.isWideLayout = () => !!(typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(min-width: 1180px)').matches);
   A.setQuery = (which, val) => { S.q[which] = val; };
   A.toggleRawOpen = () => { S.rawOpen = !S.rawOpen; render.work(); };
@@ -571,7 +582,6 @@
     if (S.target.type === 'player') await A.setPreviewPlayer(S.target.id);
     else if (!S.previewUuid && (S.data.players || []).length) await loadPreviewContext(S.data.players[0].uuid);
     await loadCurrentFormat();
-    if (window.matchMedia && window.matchMedia('(max-width: 1179px)').matches) A.closeRail();
   };
   A.setPlatform = async (platform) => {
     if (!S.target || !A.editionEnabled(S.target.type)) return;
@@ -662,10 +672,6 @@
     S.pcache = {};
     S.railTab = null;
     S.last = { group: null, player: null };
-    // Visible by default on a wide screen (a permanent column); closed by
-    // default as a narrow-screen overlay — matches how it always behaved
-    // before the menu button could collapse it on desktop too.
-    S.railOpen = A.isWideLayout();
     const me = S.data.session.player;
     await loadPreviewContext(me.uuid).catch(() => {});
     const initial = A.isAdmin() ? { type: 'global', platform: 'java' } : { type: 'self', platform: 'java' };

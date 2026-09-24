@@ -387,6 +387,8 @@
 
   /* --------------------------------------------------------------------- top */
 
+  const DOCS_URL = 'https://afxplugins.github.io/documentation/customplayernametags/';
+
   V.renderTop = () => {
     const t = S.target;
     const pills = [];
@@ -396,12 +398,9 @@
     if (S.saveStatus === 'saving') pills.push('<span class="pill saving">' + I('save', 'sm') + 'Saving…</span>');
     else if (S.saveStatus === 'empty') pills.push('<span class="pill warn" title="A nametag format cannot be empty">' + I('alert', 'sm') + 'Not applied — add something to this format</span>');
     $('topbar').innerHTML =
-      '<button type="button" class="btn icon ghost menu-btn" data-act="rail-toggle" aria-label="' + (S.railOpen ? 'Hide formats' : 'Show formats') + '" aria-expanded="' + S.railOpen + '">' + I('menu') + '</button>' +
-      '<div class="brand"><img class="brand-mark" src="assets/icon.png" alt="" width="38" height="38"><div class="brand-text"><span class="brand-name">CustomPlayerNametags</span><span class="brand-sub">Nametag Format Editor</span></div></div>' +
+      '<a class="brand" href="' + DOCS_URL + '" target="_blank" rel="noopener noreferrer" title="Open the CustomPlayerNametags documentation" aria-label="CustomPlayerNametags documentation (opens in a new tab)"><img class="brand-mark" src="assets/icon.png" alt="" width="38" height="38"><span class="brand-text"><span class="brand-name">CustomPlayerNametags</span><span class="brand-sub">Nametag Format Editor</span></span></a>' +
       '<div class="crumbs"><span class="title">' + esc(A.targetTitle()) + '</span>' + pills.join('') + '</div><div class="spacer"></div>' +
       '<div class="actions"></div>';
-    $('rail-scrim').hidden = !(S.railOpen && !A.isWideLayout());
-    $('app').dataset.rail = S.railOpen ? '1' : '0';
     document.title = (A.targetTitle() || 'Nametag Format Editor') + ' | CustomPlayerNametags';
   };
 

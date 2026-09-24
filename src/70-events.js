@@ -82,7 +82,6 @@
       case 'deselect': A.deselect(); return;
       case 'add': A.view.openPop(btn, D.parseListKey(btn.dataset.list)); return;
 
-      case 'rail-toggle': A.toggleRail(); return;
       case 'undo': A.undo(); return;
       case 'redo': A.redo(); return;
       case 'retry': A.retry(); return;
@@ -107,8 +106,8 @@
       case 'line-up': A.moveLineUp(parseInt(btn.dataset.line, 10)); A.view.renderWork(); return;
       case 'line-down': A.moveLineDown(parseInt(btn.dataset.line, 10)); A.view.renderWork(); return;
       case 'line-dup': A.duplicateLine(parseInt(btn.dataset.line, 10)); A.view.renderWork(); return;
-      case 'line-reset': A.resetLine(parseInt(btn.dataset.line, 10)); A.view.renderWork(); return;
-      case 'line-del': A.deleteLine(parseInt(btn.dataset.line, 10)); A.view.renderWork(); return;
+      case 'line-reset': if (await A.resetLine(parseInt(btn.dataset.line, 10))) A.view.renderWork(); return;
+      case 'line-del': if (await A.deleteLine(parseInt(btn.dataset.line, 10))) A.view.renderWork(); return;
 
       case 'raw-toggle': A.toggleRawOpen(); return;
       case 'raw-edit': A.startRawEdit(); return;
@@ -313,18 +312,10 @@
     A.view.renderInspector();
   });
 
-  let wasWide = A.isWideLayout();
   window.addEventListener('resize', () => {
     A.view.fitStage();
     if (S.menu) A.view.closeCtx(false);
     if (S.pop) A.view.renderPop();
-    // Crossing the 1180px breakpoint changes what the rail even is (a
-    // permanent column vs. a narrow-screen overlay), so its open/closed
-    // state resets to that layout's normal default rather than carrying
-    // over whatever it happened to be on the other side.
-    const isWide = A.isWideLayout();
-    if (isWide !== wasWide) { S.railOpen = isWide; A.view.renderTop(); }
-    wasWide = isWide;
   });
   window.addEventListener('scroll', () => { if (S.menu) A.view.closeCtx(false); }, true);
   window.addEventListener('blur', () => { if (S.menu) A.view.closeCtx(false); });
