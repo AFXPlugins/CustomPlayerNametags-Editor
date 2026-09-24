@@ -15,6 +15,14 @@
  *
  * Same method contract as MockBridge — see the big comment atop
  * 20-bridge.js for the full method list.
+ *
+ * The session the Worker stores is always AES-128-GCM ciphertext — the
+ * Worker, its KV store, Cloudflare, and GitHub Pages never see a server's
+ * real data, only this opaque blob. The decryption key lives solely in
+ * this page's URL *fragment* (`#k=...`), which browsers never send to any
+ * server (not this one, not the Worker) — so decryption happens entirely
+ * here, client-side. See EditorCrypto.java on the plugin side for the
+ * matching encryption.
  * ========================================================================== */
 (function (NT) {
   'use strict';
@@ -41,12 +49,71 @@
   /** The session id in the current URL, or null if this isn't a relay session. */
   function sessionIdFromUrl() {
     const id = urlParam('session');
-    return id && /^[a-f0-9]{1,64}$/i.test(id) ? id : null;
+    return id && /^[A-Za-z0-9]{1,32}$/.test(id) ? id : null;
+  }
+
+  /** The decryption key from the URL *fragment* (`#k=...`) — never sent to any server. */
+  function keyFromUrlFragment() {
+    try {
+      const hash = window.location.hash || '';
+      const params = new URLSearchParams(hash.replace(/^#/, ''));
+      const k = params.get('k');
+      return k && /^[A-Za-z0-9_-]+$/.test(k) ? k : null;
+    } catch (e) {
+      return null;
+    }
   }
 
   function workerUrl() {
     const override = urlParam('api');
     return (override || DEFAULT_WORKER_URL).replace(/\/+$/, '');
+  }
+
+  /* ------------------------------------------------------------ crypto --
+   * Matches EditorCrypto.java exactly: AES-128-GCM, 96-bit IV, 128-bit tag
+   * appended to the ciphertext (both Java's Cipher and Web Crypto use that
+   * same convention, so no extra framing is needed on either end).
+   * -------------------------------------------------------------------- */
+
+  function base64ToBytes(b64) {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }
+
+  function base64UrlToBytes(b64url) {
+    let b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    return base64ToBytes(b64);
+  }
+
+  async function decryptEnvelope(envelope, keyBase64Url) {
+    if (!window.crypto || !window.crypto.subtle) {
+      throw new Error('This browser does not support the Web Crypto API needed to decrypt this session (try a modern browser over HTTPS).');
+    }
+    if (!envelope || typeof envelope.iv !== 'string' || typeof envelope.ciphertext !== 'string') {
+      throw new Error('The relay returned a session in an unexpected format.');
+    }
+    const keyBytes = base64UrlToBytes(keyBase64Url);
+    const iv = base64ToBytes(envelope.iv);
+    const ciphertext = base64ToBytes(envelope.ciphertext);
+    let key;
+    try {
+      key = await window.crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
+    } catch (e) {
+      throw new Error('This link\u2019s decryption key looks invalid.');
+    }
+    let plaintextBuf;
+    try {
+      plaintextBuf = await window.crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+    } catch (e) {
+      // Wrong key, tampered/corrupted data, or a mismatched session id —
+      // AES-GCM's auth tag makes all of these fail closed rather than
+      // silently returning garbage.
+      throw new Error('Could not decrypt this session \u2014 the link may be incomplete, or the session may not match this key.');
+    }
+    return new TextDecoder('utf-8').decode(plaintextBuf);
   }
 
   class RelayBridge {
@@ -55,15 +122,22 @@
       this.isRelay = true;
       this.sessionId = sessionId;
       this.workerUrl = workerUrl();
+      this.decryptionKey = keyFromUrlFragment();
       this.state = null;
       this.original = null; // frozen copy of `formats`, for diffing on Publish
       this.meta = null;
       this.loadPromise = null;
     }
 
-    /** Fetches the snapshot once and caches it; safe to call more than once. */
+    /** Fetches the (encrypted) session once, decrypts it locally, and caches the result; safe to call more than once. */
     _ensureFetched() {
       if (this.loadPromise) return this.loadPromise;
+      if (!this.decryptionKey) {
+        this.loadPromise = Promise.reject(new Error(
+          'This link is missing its decryption key (the part after \u201c#\u201d) \u2014 it may have been copied incompletely. Run /nametags editor web again for a fresh link.'
+        ));
+        return this.loadPromise;
+      }
       this.loadPromise = fetch(this.workerUrl + '/session/' + encodeURIComponent(this.sessionId), {
         method: 'GET',
       })
@@ -78,8 +152,14 @@
           }
           return res.json();
         })
-        .then((body) => {
-          const snapshot = body.snapshot || {};
+        .then((body) => decryptEnvelope(body.payload, this.decryptionKey).then((plaintext) => ({ body, plaintext })))
+        .then(({ body, plaintext }) => {
+          let snapshot;
+          try {
+            snapshot = JSON.parse(plaintext);
+          } catch (e) {
+            throw new Error('Decrypted session data was not valid \u2014 it may be corrupted.');
+          }
           this.meta = Object.assign(
             { createdAt: body.createdAt, expiresAt: body.expiresAt },
             snapshot.meta || {}
