@@ -90,6 +90,7 @@
       case 'retry': A.retry(); return;
       case 'start-from-current': A.startFromCurrent(); return;
       case 'clear-override': A.clearOverride(); return;
+<<<<<<< HEAD
       case 'clear-group-format': A.clearGroupFormat(); return;
       case 'sandbox': NT.sandbox && NT.sandbox.open(); return;
 
@@ -97,6 +98,10 @@
       case 'publish-close': A.view.closePublish(); return;
       case 'publish-copy': A.copyPublishCommands(btn); return;
 
+=======
+      case 'sandbox': NT.sandbox && NT.sandbox.open(); return;
+
+>>>>>>> 7313786d9b319ee1829bf3a59889735820c0574b
       case 'go': {
         const type = btn.dataset.type;
         const id = btn.dataset.id;

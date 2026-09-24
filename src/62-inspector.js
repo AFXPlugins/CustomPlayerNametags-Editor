@@ -186,9 +186,12 @@
     if (admin && t.type === 'player' && S.fmt.exists) {
       body += '<button type="button" class="btn danger" data-act="clear-override">' + I('trash') + 'Remove personal format</button>';
     }
+<<<<<<< HEAD
     if (admin && t.type === 'group' && S.fmt.exists) {
       body += '<button type="button" class="btn danger" data-act="clear-group-format">' + I('trash') + 'Remove group format</button>';
     }
+=======
+>>>>>>> 7313786d9b319ee1829bf3a59889735820c0574b
     return { head: head('sliders', A.targetTitle(), 'Nothing selected'), body, foot: '' };
   }
 

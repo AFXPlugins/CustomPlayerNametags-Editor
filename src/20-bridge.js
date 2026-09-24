@@ -33,9 +33,12 @@
  *   saveOwn(raw)            -> { ok, error? }          (player: the server keeps
  *       only the widget fills unless the player already has an individual format)
  *   clearPlayerFormat(uuid) -> { ok }                  (admin)
+<<<<<<< HEAD
  *   clearGroupFormat(id, bedrock) -> { ok }             (admin — deletes a group's
  *       custom format entirely, reverting its members to whichever
  *       lower-priority format tier next applies)
+=======
+>>>>>>> 7313786d9b319ee1829bf3a59889735820c0574b
  *
  *   previewContext(uuid)    -> { name, values: { key: resolvedString }, lineLimit }
  *       PlaceholderAPI values for that player as the nametag would resolve them,
@@ -227,12 +230,15 @@
       return { ok: true };
     }
 
+<<<<<<< HEAD
     async clearGroupFormat(id, bedrock) {
       await wait(this.latency / 2);
       delete this.state.formats.group[bedrock ? 'bedrock' : 'java'][id];
       return { ok: true };
     }
 
+=======
+>>>>>>> 7313786d9b319ee1829bf3a59889735820c0574b
     async previewContext(uuid) {
       const p = this.profileByUuid(uuid) || this.state.profiles[0];
       // profile.limit: null = server default, -1 = unlimited, N = tiered permission
@@ -252,6 +258,7 @@
     removePlaceholder(key) { this.state.placeholders = this.state.placeholders.filter((p) => p.key !== key); }
   }
 
+<<<<<<< HEAD
   // A `?session=<id>` in the URL (put there by `/nametags editor web`) means
   // this page should load real server data through RelayBridge (21-relay.js)
   // instead of the built-in demo data — everything else about the app is
@@ -263,5 +270,8 @@
     }
     return new MockBridge();
   };
+=======
+  NT.createBridge = () => new MockBridge();
+>>>>>>> 7313786d9b319ee1829bf3a59889735820c0574b
   NT.MockBridge = MockBridge;
 })((globalThis.NT = globalThis.NT || {}));
