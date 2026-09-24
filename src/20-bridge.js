@@ -2,16 +2,18 @@
  * 20-bridge.js — everything the editor knows about the "server".
  *
  * The UI only ever talks to a `bridge`. Right now that is the in-memory
- * `MockBridge` below, seeded with fake players, groups, placeholders and
- * formats so the editor can be exercised without the plugin. To wire it up
- * later, implement the same methods against the plugin's web API and return it
- * from `NT.createBridge()` — nothing else in the editor has to change.
+ * `MockBridge` below: a blank, in-memory editor (empty global format, no line
+ * limit, one "Steve" preview profile) so the editor can be exercised without
+ * the plugin. With `?session=` in the URL, RelayBridge (21-relay.js) is used
+ * instead and loads a real server's data. Any other backend only has to
+ * implement the same methods and be returned from `NT.createBridge()` —
+ * nothing else in the editor has to change.
  *
  * ---------------------------------------------------------------- CONTRACT
  * All methods return Promises.
  *
  *   load() -> {
- *     session:      { role: 'admin' | 'player', player: { uuid, name } },
+ *     session:      { role: 'admin' | 'player', player: { uuid, name, skin? } },
  *     settings:     { lineMaxCharacters, truncateIndicator, widgetTruncateIndicator,
  *                     crouchEffect: 'NONE'|'DEFAULT'|'HIDE',
  *                     separateBedrockGlobal, separateBedrockGroups,
@@ -51,18 +53,15 @@
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
   /* ------------------------------------------------------------- seed data */
-  // A blank editor: no players, no groups, just one global format pre-filled
-  // with an example so there is something to look at and play with. The lone
-  // profile below only exists to give the preview a name and placeholder values.
+  // A blank editor: no players, no groups, an empty global format and no
+  // per-line character limit, so there is nothing to undo before you start
+  // building. The lone profile below only exists to give the preview a name,
+  // some placeholder values and a head (the real, bundled default Steve skin).
 
   function seed() {
-    const example =
-      '<gradient:#ff8a00:#e52e71><bold>{player}</bold></gradient>' +
-      '\\n<gray>Level <yellow>%player_level%<gray> | <green>%player_ping%<gray> ms' +
-      '\\n{widget id=a1b2c3d4 colors=true placeholders=true text=true limit=16}<aqua>Hello there!{/widget}';
     return {
       settings: {
-        lineMaxCharacters: 24, truncateIndicator: true, widgetTruncateIndicator: true, crouchEffect: 'DEFAULT',
+        lineMaxCharacters: -1, truncateIndicator: true, widgetTruncateIndicator: true, crouchEffect: 'DEFAULT',
         separateBedrockGlobal: false, separateBedrockGroups: false,
         bedrockPrefix: '', bedrockSuffix: '', affixGlobal: false, affixPlayer: false, affixGroup: false,
       },
@@ -73,12 +72,12 @@
         { key: 'player_world', value: '%player_world%', title: 'World' },
       ],
       profiles: [{
-        uuid: 'preview', name: 'Steve', group: 'default', limit: null,
+        uuid: 'preview', name: 'Steve', group: 'default', limit: -1, skin: 'assets/steve.png',
         look: { skin: '#c68e63', hair: '#3a2a22', shirt: '#2f9fb0', pants: '#39407a', eyes: '#3b6fd8' },
         values: { player_ping: '48', player_health: '20', player_level: '12', player_world: 'world' },
       }],
       formats: {
-        global: { java: example, bedrock: example },
+        global: { java: '', bedrock: '' },
         group: { java: {}, bedrock: {} },
         player: {},
       },
@@ -106,7 +105,7 @@
       const s = this.state;
       const me = this.profileByUuid(s.session.playerUuid);
       return clone({
-        session: { role: s.session.role, player: { uuid: me.uuid, name: me.name } },
+        session: { role: s.session.role, player: { uuid: me.uuid, name: me.name, skin: me.skin || null } },
         settings: s.settings,
         placeholders: s.placeholders,
         players: [],

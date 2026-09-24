@@ -82,14 +82,20 @@ svg.i.lg { width: 22px; height: 22px; }
 
 .topbar {
   flex: none; display: flex; align-items: center; gap: 14px; height: 56px; padding: 0 14px 0 16px;
-  background: var(--rail); border-bottom: 1px solid var(--line-soft);
+  background: var(--rail); border-bottom: 1px solid var(--line-soft); overflow: hidden;
 }
-.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+/* flex: none — the brand is a flex item like any other, so without this it shrinks
+ * under pressure from a wide crumbs (many pills) or actions (badge + button) instead
+ * of staying its natural size, and its nowrap text spills into the next item. */
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; flex: none; }
 .brand-mark {
   width: 38px; height: 38px; flex: none; border-radius: 9px; image-rendering: pixelated; object-fit: cover;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, .14), 0 0 0 3px rgba(0, 0, 0, .28), 0 4px 10px -2px rgba(0, 0, 0, .55);
 }
-.brand-text { display: flex; flex-direction: column; justify-content: center; gap: 3px; min-width: 0; }
+/* 6px, not 3: the Minecraft face draws its descenders (y, g) down to the very bottom of a
+ * line-height:1 box, so anything tighter leaves them touching the subtitle. Title (21) + gap +
+ * subtitle (10.5) also comes to ~the 38px icon beside it. */
+.brand-text { display: flex; flex-direction: column; justify-content: center; gap: 6px; min-width: 0; }
 .brand-name {
   font-family: var(--font-mc); font-size: 21px; line-height: 1; letter-spacing: .03em; white-space: nowrap;
   color: #fff; text-shadow: 2px 2px 0 rgba(0, 0, 0, .45);
@@ -100,7 +106,7 @@ svg.i.lg { width: 22px; height: 22px; }
 }
 .menu-btn { display: none; }
 
-.crumbs { display: flex; align-items: center; gap: 8px; min-width: 0; margin-left: 10px; padding-left: 16px; border-left: 1px solid var(--line-soft); }
+.crumbs { display: flex; align-items: center; gap: 8px; min-width: 0; margin-left: 10px; padding-left: 16px; border-left: 1px solid var(--line-soft); flex: 1 1 auto; overflow: hidden; }
 .crumbs .title { font-weight: 650; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pill {
   display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: 99px;
@@ -111,9 +117,11 @@ svg.i.lg { width: 22px; height: 22px; }
 .pill.bedrock { color: #9fb2e6; background: rgba(140, 165, 230, .13); }
 .pill.dirty { color: var(--gold-hi); background: var(--gold-soft); }
 .pill.locked { color: var(--k-widget); background: rgba(225, 145, 255, .12); }
+.pill.saving { color: var(--ok); background: rgba(102, 221, 146, .12); }
+.pill.warn { color: var(--danger); background: rgba(255, 124, 124, .13); }
 
 .spacer { flex: 1; }
-.actions { display: flex; align-items: center; gap: 8px; }
+.actions { display: flex; align-items: center; gap: 8px; flex: none; }
 .sep { width: 1px; height: 22px; background: var(--line-soft); margin: 0 4px; }
 
 /* buttons */
@@ -171,6 +179,8 @@ svg.i.lg { width: 22px; height: 22px; }
   background: var(--slot); box-shadow: var(--bevel);
 }
 .who .face { width: 34px; height: 34px; flex: none; border-radius: 6px; overflow: hidden; background: var(--raised); image-rendering: pixelated; }
+.who .face { position: relative; }
+.who .face .head-layer { position: absolute; inset: 0; background-size: 272px 272px; background-repeat: no-repeat; image-rendering: pixelated; }
 .who .face img { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
 .who .nm { font-weight: 650; line-height: 1.2; }
 .who .rl { font-size: 12px; color: var(--muted); }
@@ -222,7 +232,10 @@ svg.i.lg { width: 22px; height: 22px; }
 /* ==========================================================================
  * Work column
  * ========================================================================== */
-.work { min-width: 0; overflow-y: auto; padding: 16px 18px 40px; display: flex; flex-direction: column; gap: 16px; }
+/* --gap is the one vertical rhythm for everything below the preview: between line entries, from the
+ * last line to the Add line button, and from there to the Raw format box. */
+.work { --gap: 10px; min-width: 0; overflow-y: auto; padding: 16px 18px 40px; display: flex; flex-direction: column; gap: var(--gap); }
+#stage-slot { margin-bottom: 6px; } /* keeps the preview 16px (--gap + 6) clear of the format editor */
 
 /* ---- stage ---- */
 .stage {
@@ -269,8 +282,8 @@ svg.i.lg { width: 22px; height: 22px; }
 .section-head .hint { color: var(--muted); font-size: 12.5px; }
 .section-head .grow { flex: 1; }
 
-.compose { display: flex; flex-direction: column; gap: 10px; }
-.lines { display: flex; flex-direction: column; gap: 8px; }
+.compose { display: flex; flex-direction: column; gap: var(--gap); }
+.lines { display: flex; flex-direction: column; gap: var(--gap); }
 .line {
   display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 10px; align-items: start;
   padding: 10px 10px 10px 8px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line-soft);

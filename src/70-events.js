@@ -83,8 +83,6 @@
       case 'add': A.view.openPop(btn, D.parseListKey(btn.dataset.list)); return;
 
       case 'rail-toggle': A.toggleRail(); return;
-      case 'discard': A.discard(); return;
-      case 'save': A.save(); return;
       case 'undo': A.undo(); return;
       case 'redo': A.redo(); return;
       case 'retry': A.retry(); return;
@@ -109,6 +107,7 @@
       case 'line-up': A.moveLineUp(parseInt(btn.dataset.line, 10)); A.view.renderWork(); return;
       case 'line-down': A.moveLineDown(parseInt(btn.dataset.line, 10)); A.view.renderWork(); return;
       case 'line-dup': A.duplicateLine(parseInt(btn.dataset.line, 10)); A.view.renderWork(); return;
+      case 'line-reset': A.resetLine(parseInt(btn.dataset.line, 10)); A.view.renderWork(); return;
       case 'line-del': A.deleteLine(parseInt(btn.dataset.line, 10)); A.view.renderWork(); return;
 
       case 'raw-toggle': A.toggleRawOpen(); return;
@@ -242,7 +241,6 @@
     const mod = e.ctrlKey || e.metaKey;
     if (mod && !e.shiftKey && e.key.toLowerCase() === 'z') { e.preventDefault(); A.undo(); return; }
     if (mod && e.shiftKey && e.key.toLowerCase() === 'z') { e.preventDefault(); A.redo(); return; }
-    if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); A.save(); return; }
     if (typing) return;
     if (e.key === 'Escape') { if (S.pop) A.view.closePop(true); else if (S.sel) A.deselect(); return; }
     if (!S.sel) return;
@@ -315,12 +313,18 @@
     A.view.renderInspector();
   });
 
+  let wasWide = A.isWideLayout();
   window.addEventListener('resize', () => {
+    A.view.fitStage();
     if (S.menu) A.view.closeCtx(false);
     if (S.pop) A.view.renderPop();
-    // The rail is only ever an overlay below 1180px; if it was left open and
-    // the window grows past that, close it so its state doesn't go stale.
-    if (S.railOpen && window.matchMedia('(min-width: 1180px)').matches) A.closeRail();
+    // Crossing the 1180px breakpoint changes what the rail even is (a
+    // permanent column vs. a narrow-screen overlay), so its open/closed
+    // state resets to that layout's normal default rather than carrying
+    // over whatever it happened to be on the other side.
+    const isWide = A.isWideLayout();
+    if (isWide !== wasWide) { S.railOpen = isWide; A.view.renderTop(); }
+    wasWide = isWide;
   });
   window.addEventListener('scroll', () => { if (S.menu) A.view.closeCtx(false); }, true);
   window.addEventListener('blur', () => { if (S.menu) A.view.closeCtx(false); });

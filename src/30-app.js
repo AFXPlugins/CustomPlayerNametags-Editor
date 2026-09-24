@@ -16,6 +16,7 @@
     target: null,
     fmt: { raw: '', exists: false },
     lines: [[]],
+    baseline: [[]], // the lines as loaded this session, for per-line reset
     history: [],
     future: [],
     sel: null,
@@ -27,7 +28,7 @@
     rawEditing: false,
     loading: false,
     loadError: null,
-    busy: false,
+    saveStatus: 'idle', // 'idle' | 'saving' | 'empty' | 'error'
     q: { group: '', player: '' },
     previewUuid: null,
     pctx: null,
@@ -240,6 +241,88 @@
     render.live(); render.inspector();
   };
 
+  /* ------------------------------------------------------------ autosave
+   * Every change is written to the session's saved data on its own — there
+   * is no Save button. Discrete actions (adding/removing/reordering a chunk
+   * or a line) queue a save right away; a burst of typing into one field
+   * (see commitEdit below) is debounced so it doesn't fire on every
+   * keystroke. `saveSeq` guards against an older save finishing after a
+   * newer one (or a target switch) has already moved on. */
+
+  let saveTimer = null;
+  let savePromise = null;
+  let saveSeq = 0;
+
+  function scheduleAutosave() {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => { saveTimer = null; savePromise = runAutosave(); }, 500);
+  }
+
+  async function runAutosave() {
+    if (!S.fmt || !S.bridge || S.loading) return;
+    const raw = A.serialize();
+    if (raw === S.fmt.raw) { S.saveStatus = 'idle'; render.top(); return; }
+    if (!raw) {
+      // A real server rejects an empty format outright — nothing to send.
+      S.saveStatus = 'empty';
+      render.top();
+      return;
+    }
+    const seq = ++saveSeq;
+    S.saveStatus = 'saving';
+    render.top();
+    try {
+      const res = A.isAdmin() ? await S.bridge.saveFormat(S.target, raw) : await S.bridge.saveOwn(raw);
+      if (seq !== saveSeq) return; // superseded by a newer edit/save
+      if (res.ok) {
+        S.fmt = Object.assign({}, S.fmt, { raw, exists: true });
+        if (S.target && S.target.type === 'group') trackGroup(S.target.platform === 'bedrock' ? 'bedrock' : 'java', S.target.id, true);
+        if (S.target && S.target.type === 'player') {
+          const p = (S.data.players || []).find((x) => x.uuid === S.target.id);
+          if (p) p.hasFormat = true;
+        }
+        S.saveStatus = 'idle';
+        render.rail();
+      } else {
+        S.saveStatus = 'error';
+        A.view.toast(res.error || 'Could not save.', { kind: 'err' });
+      }
+    } catch (e) {
+      if (seq !== saveSeq) return;
+      S.saveStatus = 'error';
+      A.view.toast('Could not reach the server.', { kind: 'err' });
+    }
+    render.top();
+  }
+
+  /** Ensures any pending or in-flight save has actually landed. Called before
+   *  switching targets, so the format you're leaving is saved first. */
+  A.flushAutosave = async () => {
+    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; savePromise = runAutosave(); }
+    if (savePromise) await savePromise;
+  };
+
+  // A field-edit "burst" (typing into a text box, dragging a colour picker...)
+  // collapses into ONE undo step, not one per keystroke. The first change
+  // under a given key snapshots history; later changes with the same key,
+  // within EDIT_BURST_MS of each other, just mutate in place. Any discrete
+  // action (a click, a selection change, undo/redo, switching targets) ends
+  // the burst so the next edit starts a fresh step.
+  const EDIT_BURST_MS = 800;
+  let editKey = null;
+  let editCloseTimer = null;
+  function endEditBurst() {
+    editKey = null;
+    if (editCloseTimer) { clearTimeout(editCloseTimer); editCloseTimer = null; }
+  }
+  function commitEdit(key, mutate) {
+    if (editKey !== key) { pushHistory(); editKey = key; }
+    mutate();
+    if (editCloseTimer) clearTimeout(editCloseTimer);
+    editCloseTimer = setTimeout(endEditBurst, EDIT_BURST_MS);
+    scheduleAutosave();
+  }
+
   /* ---------------------------------------------------------- mutations */
 
   function remintIds(chunks) {
@@ -247,16 +330,17 @@
     return chunks;
   }
 
-  A.select = (ref) => { S.sel = (S.sel && D.sameRef(S.sel, ref)) ? null : ref; render.inspector(); render.live(); };
-  A.deselect = () => { S.sel = null; render.inspector(); render.live(); };
+  A.select = (ref) => { endEditBurst(); S.sel = (S.sel && D.sameRef(S.sel, ref)) ? null : ref; render.inspector(); render.live(); };
+  A.deselect = () => { endEditBurst(); S.sel = null; render.inspector(); render.live(); };
   // Like select, but never un-selects: right-clicking an already selected chip keeps it selected.
-  A.selectRef = (ref) => { if (S.sel && D.sameRef(S.sel, ref)) return; S.sel = ref; render.inspector(); render.live(); };
+  A.selectRef = (ref) => { if (S.sel && D.sameRef(S.sel, ref)) return; endEditBurst(); S.sel = ref; render.inspector(); render.live(); };
 
   A.addText = (lr, text) => {
     pushHistory();
     const list = D.listOf(S.lines, lr); if (!list) return;
     list.push({ kind: 'text', text: text || '' });
     S.sel = { l: lr.l, w: lr.w, i: list.length - 1 };
+    scheduleAutosave();
   };
   A.addColor = (lr, spec) => {
     const raw = rawFromSpec(spec); if (raw == null) return;
@@ -264,29 +348,34 @@
     const list = D.listOf(S.lines, lr); if (!list) return;
     list.push({ kind: 'color', raw });
     S.sel = { l: lr.l, w: lr.w, i: list.length - 1 };
+    scheduleAutosave();
   };
   A.addPlaceholder = (lr, value) => {
     pushHistory();
     const list = D.listOf(S.lines, lr); if (!list) return;
     list.push({ kind: 'placeholder', raw: value });
     S.sel = { l: lr.l, w: lr.w, i: list.length - 1 };
+    scheduleAutosave();
   };
   A.addLimit = (lr, n) => {
     pushHistory();
     const list = D.listOf(S.lines, lr); if (!list) return;
     list.push({ kind: 'limit', limit: Math.max(0, n | 0), raw: null });
     S.sel = { l: lr.l, w: lr.w, i: list.length - 1 };
+    scheduleAutosave();
   };
   A.addWidget = (lr) => {
     pushHistory();
     const list = D.listOf(S.lines, lr); if (!list) return;
     list.push({ kind: 'widget', widgetId: M.mintWidgetId(), colors: true, placeholders: true, text: true, limit: -1, contents: [] });
     S.sel = { l: lr.l, w: null, i: list.length - 1 };
+    scheduleAutosave();
   };
   A.addNewlineAfter = (lr) => {
     pushHistory();
     S.lines.splice(lr.l + 1, 0, []);
     S.sel = null;
+    scheduleAutosave();
   };
 
   A.removeChunk = (ref) => {
@@ -294,6 +383,7 @@
     const list = D.listOf(S.lines, { l: ref.l, w: ref.w }); if (!list) return;
     list.splice(ref.i, 1);
     S.sel = null;
+    scheduleAutosave();
   };
   A.duplicateChunk = (ref) => {
     const list = D.listOf(S.lines, { l: ref.l, w: ref.w }); if (!list) return;
@@ -302,6 +392,7 @@
     if (dup.kind === 'widget') { dup.widgetId = M.mintWidgetId(); remintIds(dup.contents); }
     list.splice(ref.i + 1, 0, dup);
     S.sel = { l: ref.l, w: ref.w, i: ref.i + 1 };
+    scheduleAutosave();
   };
   A.nudge = (ref, dir) => {
     const list = D.listOf(S.lines, { l: ref.l, w: ref.w }); if (!list) return;
@@ -309,6 +400,7 @@
     pushHistory();
     const tmp = list[ref.i]; list[ref.i] = list[j]; list[j] = tmp;
     S.sel = { l: ref.l, w: ref.w, i: j };
+    scheduleAutosave();
   };
   A.moveChunk = (from, toLr, toIndex) => {
     const fromList = D.listOf(S.lines, { l: from.l, w: from.w }); if (!fromList) return;
@@ -322,55 +414,110 @@
     idx = Math.max(0, Math.min(idx, toList.length));
     toList.splice(idx, 0, chunk);
     S.sel = { l: toLr.l, w: toLr.w, i: idx };
+    scheduleAutosave();
   };
 
-  // Field edits: intentionally NOT pushed onto the undo stack per keystroke —
-  // undo/redo works at the level of adding, removing, and reordering chunks.
-  A.setSelectedText = (text) => { const c = A.selected(); if (c && c.kind === 'text') c.text = text; };
-  A.setSelectedColor = (spec) => { const c = A.selected(); if (!c || c.kind !== 'color') return; const raw = rawFromSpec(spec); if (raw != null) c.raw = raw; };
+  // Field edits: a whole burst of typing (or dragging) into one field is ONE
+  // undo step (see commitEdit above), never one step per keystroke.
+  A.setSelectedText = (text) => {
+    const c = A.selected(); if (!c || c.kind !== 'text') return;
+    commitEdit('text:' + D.key(S.sel), () => { c.text = text; });
+  };
+  A.setSelectedColor = (spec) => {
+    const c = A.selected(); if (!c || c.kind !== 'color') return;
+    const raw = rawFromSpec(spec); if (raw == null) return;
+    pushHistory(); c.raw = raw; scheduleAutosave();
+  };
   A.setSelectedHex = (hex) => {
     const c = A.selected(); if (!c || c.kind !== 'color') return;
     let h = String(hex || '').trim(); if (h[0] !== '#') h = '#' + h;
     if (!/^#[0-9a-fA-F]{6}$/.test(h)) return;
-    c.raw = '<' + h.toLowerCase() + '>';
+    pushHistory(); c.raw = '<' + h.toLowerCase() + '>'; scheduleAutosave();
   };
-  A.setGradientStops = (stops) => { const c = A.selected(); if (!c || c.kind !== 'color') return; c.raw = '<gradient:' + stops.join(':') + '>'; };
+  A.setGradientStops = (stops) => {
+    const c = A.selected(); if (!c || c.kind !== 'color') return;
+    commitEdit('gradient:' + D.key(S.sel), () => { c.raw = '<gradient:' + stops.join(':') + '>'; });
+  };
   A.addGradientStop = () => { const c = A.selected(); const st = A.gradientStops(c && c.raw); if (!st || st.length >= 5) return; A.setGradientStops(st.concat([st[st.length - 1]])); };
   A.removeGradientStop = () => { const c = A.selected(); const st = A.gradientStops(c && c.raw); if (!st || st.length <= 2) return; A.setGradientStops(st.slice(0, -1)); };
-  A.setSelectedPlaceholder = (value) => { const c = A.selected(); if (c && c.kind === 'placeholder') c.raw = value; };
-  A.setSelectedLimit = (n) => { const c = A.selected(); if (c && c.kind === 'limit') { c.limit = Math.max(0, n | 0); c.raw = null; } };
-  A.setWidgetFlag = (flag, val) => { const c = A.selected(); if (c && c.kind === 'widget') c[flag] = val; };
-  A.setWidgetLimited = (on) => { const c = A.selected(); if (!c || c.kind !== 'widget') return; c.limit = on ? (c.limit >= 0 ? c.limit : 16) : -1; };
-  A.setWidgetLimit = (n) => { const c = A.selected(); if (c && c.kind === 'widget' && c.limit >= 0) c.limit = Math.max(0, n | 0); };
+  A.setSelectedPlaceholder = (value) => {
+    const c = A.selected(); if (!c || c.kind !== 'placeholder') return;
+    commitEdit('ph:' + D.key(S.sel), () => { c.raw = value; });
+  };
+  A.setSelectedLimit = (n) => {
+    const c = A.selected(); if (!c || c.kind !== 'limit') return;
+    commitEdit('limit:' + D.key(S.sel), () => { c.limit = Math.max(0, n | 0); c.raw = null; });
+  };
+  A.setWidgetFlag = (flag, val) => {
+    const c = A.selected(); if (!c || c.kind !== 'widget') return;
+    pushHistory(); c[flag] = val; scheduleAutosave();
+  };
+  A.setWidgetLimited = (on) => {
+    const c = A.selected(); if (!c || c.kind !== 'widget') return;
+    pushHistory(); c.limit = on ? (c.limit >= 0 ? c.limit : 16) : -1; scheduleAutosave();
+  };
+  A.setWidgetLimit = (n) => {
+    const c = A.selected(); if (!c || c.kind !== 'widget' || c.limit < 0) return;
+    commitEdit('w-limit:' + D.key(S.sel), () => { c.limit = Math.max(0, n | 0); });
+  };
 
-  A.applyRawEdit = (text) => { pushHistory(); S.lines = M.parseLines(text || ''); S.sel = null; S.rawEditing = false; };
+  A.applyRawEdit = (text) => { pushHistory(); S.lines = M.parseLines(text || ''); S.sel = null; S.rawEditing = false; scheduleAutosave(); };
 
   /* ------------------------------------------------------------- lines */
 
-  A.addLine = () => { pushHistory(); S.lines.push([]); };
+  A.addLine = () => { pushHistory(); S.lines.push([]); scheduleAutosave(); };
   A.moveLineUp = (l) => {
     if (l <= 0) return;
     pushHistory();
     const t = S.lines[l - 1]; S.lines[l - 1] = S.lines[l]; S.lines[l] = t;
     if (S.sel) { if (S.sel.l === l) S.sel = Object.assign({}, S.sel, { l: l - 1 }); else if (S.sel.l === l - 1) S.sel = Object.assign({}, S.sel, { l }); }
+    scheduleAutosave();
   };
   A.moveLineDown = (l) => A.moveLineUp(l + 1);
   A.duplicateLine = (l) => {
     pushHistory();
     const dup = clone(S.lines[l]); remintIds(dup);
     S.lines.splice(l + 1, 0, dup);
+    scheduleAutosave();
   };
   A.deleteLine = (l) => {
     pushHistory();
     if (S.lines.length <= 1) S.lines[0] = [];
     else S.lines.splice(l, 1);
     if (S.sel && S.sel.l === l) S.sel = null;
+    scheduleAutosave();
+  };
+  /** True once line `l` differs from how it was when this format was loaded
+   *  this session — including a line that didn't exist back then at all —
+   *  i.e. there is something for the per-line reset button to undo. */
+  A.lineChanged = (l) => {
+    const base = S.baseline ? S.baseline[l] : undefined;
+    if (base === undefined) return true; // didn't exist at load — resetting removes it
+    return JSON.stringify(S.lines[l] || []) !== JSON.stringify(base);
+  };
+  /** Restores line `l` to how it was when this format was loaded this
+   *  session, or removes it outright if it didn't exist yet back then. */
+  A.resetLine = (l) => {
+    const original = S.baseline && S.baseline[l];
+    pushHistory();
+    if (original === undefined) {
+      if (S.lines.length <= 1) S.lines[0] = [];
+      else S.lines.splice(l, 1);
+    } else {
+      S.lines[l] = clone(original);
+    }
+    if (S.sel && S.sel.l === l) S.sel = null;
+    scheduleAutosave();
   };
 
   /* ------------------------------------------------------------- UI-only */
 
+  // On a wide screen the rail is a permanent column, and this button collapses
+  // or restores it to give the format area more room. Below 1180px the rail is
+  // an overlay instead, and this is what opens/closes it (see style.css).
   A.toggleRail = () => { S.railOpen = !S.railOpen; render.top(); };
   A.closeRail = () => { S.railOpen = false; render.top(); };
+  A.isWideLayout = () => !!(typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(min-width: 1180px)').matches);
   A.setQuery = (which, val) => { S.q[which] = val; };
   A.toggleRawOpen = () => { S.rawOpen = !S.rawOpen; render.work(); };
   A.startRawEdit = () => { S.rawEditing = true; render.work(); };
@@ -379,16 +526,6 @@
   /* --------------------------------------------------------------- data */
 
   function withDefaultPlatform(t) { return Object.assign({ platform: 'java' }, t); }
-
-  A.confirmDiscard = async () => {
-    if (!A.dirty()) return true;
-    const v = await A.view.confirm({
-      title: 'Discard changes?',
-      body: 'You have unsaved changes to this format. Leave without saving them?',
-      buttons: [{ value: 'cancel', label: 'Keep editing' }, { value: 'leave', label: 'Discard & leave', kind: 'danger' }],
-    });
-    return v === 'leave';
-  };
 
   async function loadPreviewContext(uuid) {
     const p = await S.bridge.previewContext(uuid);
@@ -411,16 +548,19 @@
       const res = await S.bridge.loadFormat(S.target);
       S.fmt = res;
       S.lines = res.exists ? M.parseLines(res.raw) : [[]];
+      S.baseline = clone(S.lines);
     } catch (e) {
       S.loadError = (e && e.message) || 'Something went wrong.';
     }
     S.loading = false;
     S.history.length = 0; S.future.length = 0; S.sel = null;
+    S.saveStatus = 'idle';
+    endEditBurst();
     render.all();
   }
 
   A.goto = async (target) => {
-    if (!(await A.confirmDiscard())) return;
+    await A.flushAutosave();
     S.target = withDefaultPlatform(target);
     S.railTab = null;
     if (S.target.type === 'group' || S.target.type === 'player') S.last[S.target.type] = S.target.id;
@@ -435,7 +575,7 @@
   };
   A.setPlatform = async (platform) => {
     if (!S.target || !A.editionEnabled(S.target.type)) return;
-    if (!(await A.confirmDiscard())) return;
+    await A.flushAutosave();
     S.target = Object.assign({}, S.target, { platform });
     render.top();
     await loadCurrentFormat();
@@ -479,42 +619,8 @@
     pushHistory();
     S.fmt = Object.assign({}, S.fmt, { exists: true, raw: '' });
     S.lines = M.parseLines(S.fmt.effectiveRaw || '');
-    render.all();
-  };
-
-  A.save = async () => {
-    if (!A.dirty() || S.busy) return;
-    S.busy = true; render.top();
-    const raw = A.serialize();
-    try {
-      const res = A.isAdmin() ? await S.bridge.saveFormat(S.target, raw) : await S.bridge.saveOwn(raw);
-      if (res.ok) {
-        S.fmt = Object.assign({}, S.fmt, { raw, exists: true });
-        if (S.target && S.target.type === 'group') trackGroup(S.target.platform === 'bedrock' ? 'bedrock' : 'java', S.target.id, true);
-        A.view.toast('Format saved.', { kind: 'ok' });
-        if (S.target && S.target.type === 'player') {
-          const p = (S.data.players || []).find((x) => x.uuid === S.target.id);
-          if (p) p.hasFormat = true;
-        }
-      } else {
-        A.view.toast(res.error || 'Could not save.', { kind: 'err' });
-      }
-    } catch (e) {
-      A.view.toast('Could not reach the server.', { kind: 'err' });
-    }
-    S.busy = false;
-    render.all();
-  };
-
-  A.discard = async () => {
-    if (!A.dirty()) return;
-    const v = await A.view.confirm({
-      title: 'Discard changes?', body: 'This throws away everything you\u2019ve changed since the last save.',
-      buttons: [{ value: 'cancel', label: 'Keep editing' }, { value: 'discard', label: 'Discard changes', kind: 'danger' }],
-    });
-    if (v !== 'discard') return;
-    S.lines = S.fmt.exists ? M.parseLines(S.fmt.raw) : [[]];
-    S.history.length = 0; S.future.length = 0; S.sel = null;
+    S.baseline = clone(S.lines);
+    scheduleAutosave();
     render.all();
   };
 
@@ -556,6 +662,10 @@
     S.pcache = {};
     S.railTab = null;
     S.last = { group: null, player: null };
+    // Visible by default on a wide screen (a permanent column); closed by
+    // default as a narrow-screen overlay — matches how it always behaved
+    // before the menu button could collapse it on desktop too.
+    S.railOpen = A.isWideLayout();
     const me = S.data.session.player;
     await loadPreviewContext(me.uuid).catch(() => {});
     const initial = A.isAdmin() ? { type: 'global', platform: 'java' } : { type: 'self', platform: 'java' };

@@ -177,7 +177,7 @@
         legendItem('widget', 'Widget', 'A slot that players fill in themselves, within limits you set.') + '</div>';
     } else {
       body += '<div class="legend">' + legendItem('widget', 'Widget slots', 'The highlighted boxes on your nametag are yours to fill in.') + '</div>' +
-        '<div class="tips">Pick a slot, then press <kbd>+</kbd> to add text. Colors and placeholders appear only if the slot allows them. <kbd>Ctrl</kbd> + <kbd>S</kbd> saves.</div>';
+        '<div class="tips">Pick a slot, then press <kbd>+</kbd> to add text. Colors and placeholders appear only if the slot allows them. Changes save automatically.</div>';
     }
     if (admin && t.type === 'player' && S.fmt.exists) {
       body += '<button type="button" class="btn danger" data-act="clear-override">' + I('trash') + 'Remove personal format</button>';

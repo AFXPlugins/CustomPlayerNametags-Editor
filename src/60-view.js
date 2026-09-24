@@ -141,6 +141,7 @@
         '<button type="button" class="btn sm icon ghost" data-act="line-up" data-line="' + l + '" aria-label="Move line up" title="Move up"' + (l === 0 ? ' disabled' : '') + '>' + I('arrow-up') + '</button>' +
         '<button type="button" class="btn sm icon ghost" data-act="line-down" data-line="' + l + '" aria-label="Move line down" title="Move down"' + (l === S.lines.length - 1 ? ' disabled' : '') + '>' + I('arrow-down') + '</button>' +
         '<button type="button" class="btn sm icon ghost" data-act="line-dup" data-line="' + l + '" aria-label="Duplicate line" title="Duplicate">' + I('copy') + '</button>' +
+        '<button type="button" class="btn sm icon ghost" data-act="line-reset" data-line="' + l + '" aria-label="Reset line" title="Reset to how this line was when it loaded"' + (A.lineChanged(l) ? '' : ' disabled') + '>' + I('refresh') + '</button>' +
         '<button type="button" class="btn sm icon ghost danger" data-act="line-del" data-line="' + l + '" aria-label="Delete line" title="Delete line">' + I('trash') + '</button></div>'
       : '';
     const hasWidget = D.lineHasWidget(line);
@@ -255,7 +256,23 @@
       tag = '<div class="tag" aria-label="' + esc(b.plain.join(' / ')) + '">' + b.lines.map((r) => '<span class="ln">' + P.runsToHtml(r, null) + '</span>').join('') + '</div>';
     }
     $('tagwrap').innerHTML = tag;
+    V.fitStage();
   };
+
+  /** Shrinks the nametag to fit inside the stage when it is wider or taller than it. With no line
+   *  limit a long line would otherwise be clipped at both edges. Never scales up, and keeps clear of
+   *  the "Previewing" chip at the top. */
+  V.fitStage = () => {
+    const stage = $('stage');
+    const wrap = $('tagwrap');
+    if (!stage || !wrap || !stage.clientWidth) return;
+    const tag = wrap.firstElementChild;
+    if (!tag || !tag.offsetWidth) { wrap.style.transform = ''; return; }
+    const scale = Math.max(0.2, Math.min(1, (stage.clientWidth - 40) / tag.offsetWidth, (stage.clientHeight - 120) / tag.offsetHeight));
+    wrap.style.transform = scale < 1 ? 'scale(' + scale.toFixed(3) + ')' : '';
+  };
+  // The pixel font loads after first paint; re-measure once it is in.
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => V.fitStage());
 
   /* -------------------------------------------------------------------- rail */
 
@@ -290,19 +307,36 @@
   }
 
   // The head of whoever opened this editor: their real skin (fetched by UUID from
-  // a public head-rendering service), falling back to the blocky drawn face if
-  // there is no UUID (console / offline) or the image can't be loaded.
+  // a public head-rendering service), falling back to the real default Steve head
+  // (assets/steve.png) if there is no UUID (console / offline / the default
+  // editor) or the image can't be loaded.
   const HEAD_HOSTS = ['https://crafatar.com/avatars/{id}?size=68&overlay&default=MHF_Steve', 'https://minotar.net/helm/{id}/68.png'];
   const REAL_UUID = /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i;
+  // Crop the head straight out of a skin texture (front face at 8,8 plus the hat
+  // layer at 40,8 on a 64px-wide skin), drawn as CSS backgrounds so nothing needs
+  // canvas/CORS. The blocky drawn face sits underneath as a last-resort fallback
+  // in case the texture itself can't load.
+  const STEVE_SKIN = 'assets/steve.png';
+  const skinLayers = (url) => {
+    const layer = (x) => '<span class="head-layer" style="background-image:url(' + url + ');background-position:-' + x + 'px -34px"></span>';
+    return layer(34) + layer(170);
+  };
+  const steveFaceHtml = () => NT.figure.face(null) + skinLayers(STEVE_SKIN);
   V.headFallback = (img) => {
     const next = parseInt(img.dataset.n || '0', 10) + 1;
     const id = img.dataset.id;
     if (next < HEAD_HOSTS.length) { img.dataset.n = String(next); img.src = HEAD_HOSTS[next].replace('{id}', id); return; }
     const host = img.parentNode;
-    if (host) host.innerHTML = NT.figure.face(null);
+    if (host) host.innerHTML = steveFaceHtml();
   };
+  // A skin URL the server sent (Mojang's texture host), or one of our own bundled skins.
+  const SKIN_URL = /^https?:\/\/textures\.minecraft\.net\/texture\/[0-9a-f]+$/i;
+  const LOCAL_SKIN = /^assets\/[\w.-]+\.png$/;
   function faceHtml(me) {
-    if (!me || !REAL_UUID.test(me.uuid || '')) return NT.figure.face(S.pcache[me && me.uuid] && S.pcache[me.uuid].look);
+    const drawn = NT.figure.face(S.pcache[me && me.uuid] && S.pcache[me.uuid].look);
+    if (me && me.skin && LOCAL_SKIN.test(me.skin)) return drawn + skinLayers(me.skin);
+    if (me && me.skin && SKIN_URL.test(me.skin)) return drawn + skinLayers(me.skin.replace(/^http:/i, 'https:'));
+    if (!me || !REAL_UUID.test(me.uuid || '')) return steveFaceHtml();
     const id = me.uuid.replace(/-/g, '');
     return '<img class="head-img" alt="" width="34" height="34" data-id="' + id + '" data-n="0" src="' + HEAD_HOSTS[0].replace('{id}', id) + '" onerror="NT.app.view.headFallback(this)">';
   }
@@ -355,22 +389,20 @@
 
   V.renderTop = () => {
     const t = S.target;
-    const dirty = A.dirty();
     const pills = [];
     if (t && t.type !== 'self' && A.editionEnabled(t.type)) pills.push('<span class="pill ' + (t.platform === 'bedrock' ? 'bedrock' : 'java') + '"><i></i>' + (t.platform === 'bedrock' ? 'Bedrock Edition' : 'Java Edition') + '</span>');
     if (t && A.editionUnused()) pills.push('<span class="pill locked" title="The server is set to share the Java formats with Bedrock players">' + I('lock', 'sm') + 'Not in use</span>');
     if (t && !A.isAdmin() && !A.full()) pills.push('<span class="pill locked">' + I('lock', 'sm') + 'Widget slots only</span>');
-    if (dirty) pills.push('<span class="pill dirty">Unsaved changes</span>');
+    if (S.saveStatus === 'saving') pills.push('<span class="pill saving">' + I('save', 'sm') + 'Saving…</span>');
+    else if (S.saveStatus === 'empty') pills.push('<span class="pill warn" title="A nametag format cannot be empty">' + I('alert', 'sm') + 'Not applied — add something to this format</span>');
     $('topbar').innerHTML =
-      '<button type="button" class="btn icon ghost menu-btn" data-act="rail-toggle" aria-label="Show formats" aria-expanded="' + S.railOpen + '">' + I('menu') + '</button>' +
+      '<button type="button" class="btn icon ghost menu-btn" data-act="rail-toggle" aria-label="' + (S.railOpen ? 'Hide formats' : 'Show formats') + '" aria-expanded="' + S.railOpen + '">' + I('menu') + '</button>' +
       '<div class="brand"><img class="brand-mark" src="assets/icon.png" alt="" width="38" height="38"><div class="brand-text"><span class="brand-name">CustomPlayerNametags</span><span class="brand-sub">Nametag Format Editor</span></div></div>' +
       '<div class="crumbs"><span class="title">' + esc(A.targetTitle()) + '</span>' + pills.join('') + '</div><div class="spacer"></div>' +
-      '<div class="actions">' +
-      '<button type="button" class="btn ghost" data-act="discard"' + (dirty ? '' : ' disabled') + '>' + I('x') + '<span class="lbl-txt">Discard changes</span></button>' +
-      '<button type="button" class="btn primary" data-act="save"' + (dirty && !S.busy ? '' : ' disabled') + '>' + (dirty ? '<span class="dot"></span>' : '') + I('save') + '<span class="lbl-txt">' + (S.busy ? 'Saving…' : 'Save format') + '</span></button></div>';
-    $('rail-scrim').hidden = !S.railOpen;
+      '<div class="actions"></div>';
+    $('rail-scrim').hidden = !(S.railOpen && !A.isWideLayout());
     $('app').dataset.rail = S.railOpen ? '1' : '0';
-    document.title = (dirty ? '• ' : '') + (A.targetTitle() || 'Nametag Format Editor') + ' | CustomPlayerNametags';
+    document.title = (A.targetTitle() || 'Nametag Format Editor') + ' | CustomPlayerNametags';
   };
 
   /* ------------------------------------------------------------------- work */

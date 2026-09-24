@@ -179,7 +179,7 @@
       // role never actually targets 'self' either way (see A.boot in 30-app.js).
       const creator = (this.meta && this.meta.creator) || null;
       const me = creator && creator.name
-        ? { uuid: creator.uuid || '__admin__', name: creator.name }
+        ? { uuid: creator.uuid || '__admin__', name: creator.name, skin: creator.skin || null }
         : { uuid: '__admin__', name: 'Admin' };
       return clone({
         session: { role: 'admin', player: me },

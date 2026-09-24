@@ -13,6 +13,7 @@
   const A = NT.app;
   const S = A.S;
   const V = A.view;
+  const I = NT.icon;
 
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
@@ -41,7 +42,7 @@
     publishBtn.className = 'btn primary';
     publishBtn.setAttribute('data-act', 'publish');
     if (!changes.length) publishBtn.disabled = true;
-    publishBtn.innerHTML = '<span class="lbl-txt">Publish</span>';
+    publishBtn.innerHTML = I('save', 'sm') + '<span class="lbl-txt">Apply Format</span>';
     actions.insertBefore(badge, actions.firstChild);
     actions.insertBefore(publishBtn, actions.firstChild);
   };
