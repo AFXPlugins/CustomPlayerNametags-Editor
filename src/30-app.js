@@ -19,6 +19,7 @@
     baseline: [[]], // the lines as loaded this session, for per-line reset
     history: [],
     future: [],
+    drafts: {}, // per-target { lines, history, future }, also mirrored to localStorage
     sel: null,
     pop: null,
     menu: null,
@@ -223,12 +224,46 @@
     if (S.history.length > 60) S.history.shift();
     S.future.length = 0;
   }
+  /** Identifies a target for the undo/draft stores below — stable across a
+   *  round trip away and back, but distinct per group/player/platform. */
+  function targetKey(t) {
+    if (!t) return '';
+    if (t.type === 'global') return 'global:' + (t.platform || 'java');
+    if (t.type === 'group') return 'group:' + (t.platform || 'java') + ':' + t.id;
+    if (t.type === 'player') return 'player:' + t.id;
+    return 'self';
+  }
+
+  const DRAFTS_KEY = 'nt-editor-drafts-v1';
+  let draftsStoreId = null; // which server/session these drafts belong to, so unrelated sessions don't mix
+  function loadDraftsFromStorage() {
+    try {
+      if (typeof localStorage === 'undefined') return {};
+      const raw = localStorage.getItem(DRAFTS_KEY + ':' + draftsStoreId);
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) { return {}; }
+  }
+  function saveDraftsToStorage() {
+    try {
+      if (typeof localStorage === 'undefined') return;
+      localStorage.setItem(DRAFTS_KEY + ':' + draftsStoreId, JSON.stringify(S.drafts));
+    } catch (e) { /* storage unavailable/full — drafts still work in-memory this session */ }
+  }
+  /** Snapshots the in-progress edit (not just what's been autosaved) for the
+   *  current target, so it survives switching away and back, and a refresh. */
+  function saveDraft() {
+    if (!S.target) return;
+    S.drafts[targetKey(S.target)] = { lines: clone(S.lines), history: clone(S.history), future: clone(S.future) };
+    saveDraftsToStorage();
+  }
+
   A.canUndo = () => S.history.length > 0;
   A.canRedo = () => S.future.length > 0;
   A.undo = () => {
     if (!S.history.length) return;
     S.future.push(clone(S.lines));
     S.lines = S.history.pop();
+    saveDraft();
     S.sel = null;
     render.live(); render.inspector();
   };
@@ -236,6 +271,7 @@
     if (!S.future.length) return;
     S.history.push(clone(S.lines));
     S.lines = S.future.pop();
+    saveDraft();
     S.sel = null;
     render.live(); render.inspector();
   };
@@ -253,6 +289,7 @@
   let saveSeq = 0;
 
   function scheduleAutosave() {
+    saveDraft();
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(() => { saveTimer = null; savePromise = runAutosave(); }, 500);
   }
@@ -479,20 +516,12 @@
     S.lines.splice(l + 1, 0, dup);
     scheduleAutosave();
   };
-  /** Asks first; resolves true if the line was actually deleted. */
-  A.deleteLine = async (l) => {
-    const v = await A.view.confirm({
-      title: 'Delete line ' + (l + 1) + '?',
-      body: 'This removes the whole line and everything on it. You can still undo it afterwards.',
-      buttons: [{ value: 'cancel', label: 'Cancel' }, { value: 'delete', label: 'Delete line', kind: 'danger' }],
-    });
-    if (v !== 'delete') return false;
+  A.deleteLine = (l) => {
     pushHistory();
     if (S.lines.length <= 1) S.lines[0] = [];
     else S.lines.splice(l, 1);
     if (S.sel && S.sel.l === l) S.sel = null;
     scheduleAutosave();
-    return true;
   };
   /** True once line `l` differs from how it was when this format was loaded
    *  this session — including a line that didn't exist back then at all —
@@ -504,16 +533,8 @@
   };
   /** Restores line `l` to how it was when this format was loaded this
    *  session, or removes it outright if it didn't exist yet back then. */
-  A.resetLine = async (l) => {
+  A.resetLine = (l) => {
     const original = S.baseline && S.baseline[l];
-    const v = await A.view.confirm({
-      title: 'Reset line ' + (l + 1) + '?',
-      body: original === undefined
-        ? 'This line was added this session, so resetting it removes it. You can still undo it afterwards.'
-        : 'This line will go back to how it was when the format loaded, discarding your changes to it. You can still undo it afterwards.',
-      buttons: [{ value: 'cancel', label: 'Cancel' }, { value: 'reset', label: 'Reset line', kind: 'danger' }],
-    });
-    if (v !== 'reset') return false;
     pushHistory();
     if (original === undefined) {
       if (S.lines.length <= 1) S.lines[0] = [];
@@ -523,7 +544,6 @@
     }
     if (S.sel && S.sel.l === l) S.sel = null;
     scheduleAutosave();
-    return true;
   };
 
   /* ------------------------------------------------------------- UI-only */
@@ -558,13 +578,21 @@
     try {
       const res = await S.bridge.loadFormat(S.target);
       S.fmt = res;
-      S.lines = res.exists ? M.parseLines(res.raw) : [[]];
-      S.baseline = clone(S.lines);
+      S.baseline = clone(res.exists ? M.parseLines(res.raw) : [[]]);
+      const draft = S.drafts[targetKey(S.target)];
+      if (draft) {
+        S.lines = clone(draft.lines);
+        S.history = clone(draft.history || []);
+        S.future = clone(draft.future || []);
+      } else {
+        S.lines = res.exists ? M.parseLines(res.raw) : [[]];
+        S.history.length = 0; S.future.length = 0;
+      }
     } catch (e) {
       S.loadError = (e && e.message) || 'Something went wrong.';
     }
     S.loading = false;
-    S.history.length = 0; S.future.length = 0; S.sel = null;
+    S.sel = null;
     S.saveStatus = 'idle';
     endEditBurst();
     render.all();
@@ -648,6 +676,20 @@
     A.view.toast('Personal format removed.', { kind: 'ok' });
   };
 
+  /** Only available in the built-in (mock) editor, which has no real online
+   *  players to pick from — see MockBridge#createPlayer. */
+  A.canCreatePlayers = () => !!(S.bridge && S.bridge.isMock);
+  A.createPlayer = async (name) => {
+    const clean = (name || '').trim();
+    if (!clean || !A.canCreatePlayers()) return;
+    await A.flushAutosave();
+    const res = await S.bridge.createPlayer(clean);
+    if (!res || !res.uuid) return;
+    S.data.players = (S.data.players || []).concat([{ uuid: res.uuid, name: res.name, group: res.group || 'default', hasFormat: false }]);
+    S.q.player = '';
+    await A.goto({ type: 'player', id: res.uuid });
+  };
+
   A.clearGroupFormat = async () => {
     if (!S.target || S.target.type !== 'group') return;
     const groupName = S.target.id;
@@ -668,6 +710,8 @@
 
   A.boot = async (bridge) => {
     S.bridge = bridge;
+    draftsStoreId = bridge.isMock ? 'mock' : ('relay:' + (bridge.sessionId || ''));
+    S.drafts = loadDraftsFromStorage();
     S.data = await bridge.load();
     S.pcache = {};
     S.railTab = null;

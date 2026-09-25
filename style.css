@@ -359,6 +359,7 @@ button.chip:hover { background: var(--hover); border-color: #435280; }
 .add-line { align-self: flex-start; }
 
 /* raw */
+#raw-slot { margin-top: 10px; }
 .raw { border-radius: 12px; background: var(--panel); border: 1px solid var(--line-soft); overflow: hidden; }
 .raw-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 14px; }
 .raw-head h2 { margin: 0; font-size: 13.5px; font-weight: 650; }

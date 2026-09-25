@@ -303,7 +303,11 @@
 
   function renderPlayerList(pEl, t, qp) {
     const players = (S.data.players || []).filter((p) => !qp || p.name.toLowerCase().includes(qp));
-    pEl.innerHTML = players.map((p) => navPlayer(p, !!t && t.type === 'player' && t.id === p.uuid)).join('') || '<p class="empty-note">' + (qp ? 'No players match.' : 'Nobody is online.') + '</p>';
+    let html = players.map((p) => navPlayer(p, !!t && t.type === 'player' && t.id === p.uuid)).join('');
+    if (qp && A.canCreatePlayers() && !players.some((p) => p.name.toLowerCase() === qp)) {
+      html += '<button type="button" class="nav" data-act="create-player" data-name="' + esc(S.q.player.trim()) + '"><span class="lbl">' + I('plus', 'sm') + ' Create “' + esc(S.q.player.trim()) + '”</span></button>';
+    }
+    pEl.innerHTML = html || '<p class="empty-note">' + (qp ? 'No players match.' : (A.canCreatePlayers() ? 'Nobody yet — type a name above to add one.' : 'Nobody is online.')) + '</p>';
   }
 
   // The head of whoever opened this editor: their real skin (fetched by UUID from
@@ -377,7 +381,9 @@
       body = '<div class="search">' + I('search', 'sm') + '<input type="search" data-input="q-group" placeholder="Find or create a group" value="' + esc(S.q.group) + '" aria-label="Find or create a group" autocomplete="off"></div>' +
         '<div id="rail-groups"></div>';
     } else {
-      body = '<div class="search">' + I('search', 'sm') + '<input type="search" data-input="q-player" placeholder="Find a player online" value="' + esc(S.q.player) + '" aria-label="Find a player online" autocomplete="off"></div>' +
+      const canCreate = A.canCreatePlayers();
+      const ph = canCreate ? 'Find or create a player' : 'Find a player online';
+      body = '<div class="search">' + I('search', 'sm') + '<input type="search" data-input="q-player" placeholder="' + ph + '" value="' + esc(S.q.player) + '" aria-label="' + ph + '" autocomplete="off"></div>' +
         '<div id="rail-players"></div>';
     }
     rail.innerHTML = who + tabBar + '<div class="rail-panel" id="rail-panel" role="tabpanel" aria-labelledby="rail-tab-' + tab + '">' + seg + body + '</div>';

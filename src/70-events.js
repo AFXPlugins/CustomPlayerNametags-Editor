@@ -87,6 +87,7 @@
       case 'retry': A.retry(); return;
       case 'start-from-current': A.startFromCurrent(); return;
       case 'clear-override': A.clearOverride(); return;
+      case 'create-player': await A.createPlayer(btn.dataset.name); A.view.renderRail(); return;
       case 'clear-group-format': A.clearGroupFormat(); return;
 
       case 'publish': A.openPublish(); return;
@@ -106,8 +107,8 @@
       case 'line-up': A.moveLineUp(parseInt(btn.dataset.line, 10)); A.view.renderWork(); return;
       case 'line-down': A.moveLineDown(parseInt(btn.dataset.line, 10)); A.view.renderWork(); return;
       case 'line-dup': A.duplicateLine(parseInt(btn.dataset.line, 10)); A.view.renderWork(); return;
-      case 'line-reset': if (await A.resetLine(parseInt(btn.dataset.line, 10))) A.view.renderWork(); return;
-      case 'line-del': if (await A.deleteLine(parseInt(btn.dataset.line, 10))) A.view.renderWork(); return;
+      case 'line-reset': A.resetLine(parseInt(btn.dataset.line, 10)); A.view.renderWork(); return;
+      case 'line-del': A.deleteLine(parseInt(btn.dataset.line, 10)); A.view.renderWork(); return;
 
       case 'raw-toggle': A.toggleRawOpen(); return;
       case 'raw-edit': A.startRawEdit(); return;

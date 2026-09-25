@@ -22,28 +22,38 @@
   function isRelay() {
     return !!(S.bridge && S.bridge.isRelay);
   }
+  function isMock() {
+    return !!(S.bridge && S.bridge.isMock);
+  }
 
   /* -------------------------------------------------------- top bar hook */
 
   const originalRenderTop = V.renderTop;
   V.renderTop = function () {
     originalRenderTop();
-    if (!isRelay()) return;
+    if (!isRelay() && !isMock()) return;
     const actions = document.querySelector('#topbar .actions');
     if (!actions) return;
-    const changes = S.bridge.getPendingChanges();
     const publishBtn = document.createElement('button');
     publishBtn.type = 'button';
     publishBtn.className = 'btn primary';
     publishBtn.setAttribute('data-act', 'publish');
-    if (!changes.length) publishBtn.disabled = true;
+    if (isRelay() && !S.bridge.getPendingChanges().length) publishBtn.disabled = true;
     publishBtn.innerHTML = I('save', 'sm') + '<span class="lbl-txt">Apply Format</span>';
     actions.insertBefore(publishBtn, actions.firstChild);
   };
 
   /* -------------------------------------------------------------- modal */
 
-  A.openPublish = () => {
+  A.openPublish = async () => {
+    // The default (mock) editor already applies every edit straight to its
+    // own demo state as you type — there's nothing queued to publish, so
+    // the button here just makes sure that's actually landed, right now.
+    if (isMock()) {
+      await A.flushAutosave();
+      A.view.toast('Format applied.', { kind: 'ok' });
+      return;
+    }
     if (!isRelay()) return;
     const host = document.getElementById('layer-modal');
     if (!host) return;

@@ -167,17 +167,9 @@
     const t = S.target;
     const admin = A.isAdmin();
     const full = A.full();
-    const legendItem = (k, title, desc) => '<div class="legend-item" style="--kc:' + KIND[k].color + '"><div class="ico">' + I(KIND[k].icon) + '</div><div><b>' + title + '</b><span>' + desc + '</span></div></div>';
-    let body = '<div><h3 class="group-title">Applies to</h3><p class="help" style="margin:0;color:var(--muted)">' + esc(A.appliesTo()) + '</p></div>';
-    if (full) {
-      body += '<div class="legend">' +
-        legendItem('text', 'Text', 'Words and symbols, shown exactly as typed.') +
-        legendItem('color', 'Color', 'Colors, styles and gradients. They last until ended or reset.') +
-        legendItem('placeholder', 'Placeholder', 'A live value, such as ping or rank, filled in per player.') +
-        legendItem('widget', 'Widget', 'A slot that players fill in themselves, within limits you set.') + '</div>';
-    } else {
-      body += '<div class="legend">' + legendItem('widget', 'Widget slots', 'The highlighted boxes on your nametag are yours to fill in.') + '</div>' +
-        '<div class="tips">Pick a slot, then press <kbd>+</kbd> to add text. Colors and placeholders appear only if the slot allows them. Changes save automatically.</div>';
+    let body = '';
+    if (!full) {
+      body += '<div class="tips">Pick a slot, then press <kbd>+</kbd> to add text. Colors and placeholders appear only if the slot allows them. Changes save automatically.</div>';
     }
     if (admin && t.type === 'player' && S.fmt.exists) {
       body += '<button type="button" class="btn danger" data-act="clear-override">' + I('trash') + 'Remove personal format</button>';

@@ -52,6 +52,25 @@
   const clone = (o) => JSON.parse(JSON.stringify(o));
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
+  // The demo "server" persists to localStorage so a browser refresh (or
+  // closing and reopening the tab) doesn't throw away formats, groups or
+  // players you've added in the built-in editor. Real servers obviously
+  // don't need this — RelayBridge always talks to the actual plugin.
+  const STORAGE_KEY = 'nt-editor-mock-state-v1';
+  function loadPersisted() {
+    try {
+      if (typeof localStorage === 'undefined') return null;
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+  function savePersisted(state) {
+    try {
+      if (typeof localStorage === 'undefined') return;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (e) { /* storage unavailable/full — edits still work this session */ }
+  }
+
   /* ------------------------------------------------------------- seed data */
   // A blank editor: no players, no groups, an empty global format and no
   // per-line character limit, so there is nothing to undo before you start
@@ -65,12 +84,11 @@
         separateBedrockGlobal: false, separateBedrockGroups: false,
         bedrockPrefix: '', bedrockSuffix: '', affixGlobal: false, affixPlayer: false, affixGroup: false,
       },
-      placeholders: [
-        { key: 'player_ping', value: '%player_ping%', title: 'Ping (ms)' },
-        { key: 'player_health', value: '%player_health%', title: 'Health' },
-        { key: 'player_level', value: '%player_level%', title: 'XP level' },
-        { key: 'player_world', value: '%player_world%', title: 'World' },
-      ],
+      // The default editor only ever offers the player-name placeholder out
+      // of the box; anything else is typed in directly (see the "Any
+      // placeholder" field), so there's nothing to preview-resolve for those
+      // beyond the profile's own `values` above.
+      placeholders: [],
       profiles: [{
         uuid: 'preview', name: 'Steve', group: 'default', limit: -1, skin: 'assets/steve.png',
         look: { skin: '#c68e63', hair: '#3a2a22', shirt: '#2f9fb0', pants: '#39407a', eyes: '#3b6fd8' },
@@ -92,10 +110,11 @@
     constructor() {
       this.isMock = true;
       this.latency = 90;
-      this.reset();
+      this.state = loadPersisted() || seed();
     }
 
-    reset() { this.state = seed(); }
+    reset() { this.state = seed(); this.persist(); }
+    persist() { savePersisted(this.state); }
 
     get settings() { return this.state.settings; }
     profileByUuid(uuid) { return this.state.profiles.find((p) => p.uuid === uuid) || null; }
@@ -108,12 +127,29 @@
         session: { role: s.session.role, player: { uuid: me.uuid, name: me.name, skin: me.skin || null } },
         settings: s.settings,
         placeholders: s.placeholders,
-        players: [],
+        players: s.profiles.filter((p) => p.uuid !== s.session.playerUuid).map((p) => ({
+          uuid: p.uuid, name: p.name, group: p.group, hasFormat: s.formats.player[p.uuid] != null,
+        })),
         groups: {
           java: Object.keys(s.formats.group.java),
           bedrock: Object.keys(s.formats.group.bedrock),
         },
       });
+    }
+
+    /** Adds a new demo player you can then give a personal format to — the
+     *  default editor has no real server to pull an online player list from. */
+    async createPlayer(name) {
+      await wait(this.latency / 2);
+      const clean = String(name || '').trim().slice(0, 16) || 'Player';
+      const uuid = 'mock-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+      this.state.profiles.push({
+        uuid, name: clean, group: 'default', limit: -1, skin: null,
+        look: { skin: '#c68e63', hair: '#3a2a22', shirt: '#2f9fb0', pants: '#39407a', eyes: '#3b6fd8' },
+        values: {},
+      });
+      this.persist();
+      return { uuid, name: clean, group: 'default' };
     }
 
     /** The format the server would apply to a player right now (override → group → global). */
@@ -168,6 +204,7 @@
       else if (target.type === 'group') s.formats.group[bedrock ? 'bedrock' : 'java'][target.id] = raw;
       else if (target.type === 'player') s.formats.player[target.id] = raw;
       else return { ok: false, error: 'Unknown target.' };
+      this.persist();
       return { ok: true };
     }
 
@@ -180,18 +217,21 @@
       // format saves it whole; otherwise only their widget fills are kept.
       if (s.formats.player[uuid] != null) s.formats.player[uuid] = raw;
       else s.fills[uuid] = M.extractWidgetContents(raw);
+      this.persist();
       return { ok: true };
     }
 
     async clearPlayerFormat(uuid) {
       await wait(this.latency / 2);
       delete this.state.formats.player[uuid];
+      this.persist();
       return { ok: true };
     }
 
     async clearGroupFormat(id, bedrock) {
       await wait(this.latency / 2);
       delete this.state.formats.group[bedrock ? 'bedrock' : 'java'][id];
+      this.persist();
       return { ok: true };
     }
 
